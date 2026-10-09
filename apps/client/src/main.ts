@@ -24,7 +24,7 @@ function showScene(tab: Tab) {
 }
 
 mountUi({ showScene });
-game.tick();
+void game.boot();
 setInterval(() => game.tick(), 250);
 setInterval(() => game.save(), 5000);
 document.addEventListener("visibilitychange", () => document.hidden && game.save());

@@ -37,12 +37,68 @@ export function mountUi(hooks: UiHooks) {
   setInterval(tickUi, 250);
 
   function render() {
+    const login = !game.mode;
+    for (const id of ["hud", "tabs", "panel", "sheet", "game"]) $(id).classList.toggle("off", login);
+    renderLogin();
+    if (login) return;
     renderHud();
     renderTabs();
     renderPanel();
     renderSheet();
     bind();
     tickUi();
+  }
+
+  /** Pantalla de acceso: entrar, crear cuenta o jugar sin conexión. */
+  function renderLogin() {
+    const el = $("login");
+    el.hidden = !!game.mode;
+    if (el.hidden) return void (el.innerHTML = "");
+    if (el.childElementCount) return;
+    el.innerHTML = `<form class="box login" id="loginForm" novalidate>
+      <div class="brand big">Empire</div>
+      <p class="lead">Construye tu reino, cría a tu dragón y ataca a otros jugadores.</p>
+      <div class="seg" role="tablist"><button type="button" class="on" data-mode="login" aria-selected="true">Entrar</button><button type="button" data-mode="register" aria-selected="false">Crear cuenta</button></div>
+      <label for="lUser">Usuario</label><input id="lUser" autocomplete="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+">
+      <label for="lPass">Contraseña</label><input id="lPass" type="password" autocomplete="current-password" required minlength="8">
+      <div id="lKingdomRow" hidden><label for="lKingdom">Nombre de tu reino</label><input id="lKingdom" maxlength="30" placeholder="Reino de …"></div>
+      <p class="error" id="lError" role="alert"></p>
+      <button class="btn primary" id="lSubmit" type="submit">Entrar</button>
+      <button class="btn" type="button" id="lLocal">Jugar sin conexión</button>
+      <p class="small muted">Sin conexión la partida se guarda solo en este dispositivo y los rivales los controla la máquina.</p>
+    </form>`;
+    let register = false;
+    el.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => (b.onclick = () => {
+      register = b.dataset.mode === "register";
+      el.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((x) => {
+        x.classList.toggle("on", x === b);
+        x.setAttribute("aria-selected", String(x === b));
+      });
+      $("lKingdomRow").hidden = !register;
+      $("lSubmit").textContent = register ? "Crear cuenta" : "Entrar";
+      ($("lPass") as HTMLInputElement).autocomplete = register ? "new-password" : "current-password";
+    }));
+    $("lLocal").onclick = () => game.playLocal();
+    ($("loginForm") as HTMLFormElement).onsubmit = async (ev) => {
+      ev.preventDefault();
+      const user = ($("lUser") as HTMLInputElement).value.trim();
+      const pass = ($("lPass") as HTMLInputElement).value;
+      const err = $("lError");
+      if (!/^[A-Za-z0-9_]{3,20}$/.test(user)) return void (err.textContent = "El usuario debe tener de 3 a 20 letras, números o guiones bajos.");
+      if (pass.length < 8) return void (err.textContent = "La contraseña debe tener al menos 8 caracteres.");
+      err.textContent = "";
+      const btn = $("lSubmit") as HTMLButtonElement;
+      btn.disabled = true;
+      try {
+        await game.login(user, pass, register, ($("lKingdom") as HTMLInputElement).value);
+        el.innerHTML = "";
+        hooks.showScene(game.tab);
+      } catch (e) {
+        err.textContent = e instanceof Error && e.message !== "Failed to fetch" ? e.message + "." : "No se pudo conectar con el servidor.";
+      } finally {
+        btn.disabled = false;
+      }
+    };
   }
 
   function renderHud() {
@@ -58,7 +114,7 @@ export function mountUi(hooks: UiHooks) {
   }
 
   function renderTabs() {
-    $("tabs").innerHTML = TABS.map(([t, n]) => `<button data-tab="${t}" aria-selected="${game.tab === t}">${n}${t === "informes" && game.data.unread ? `<span class="badge">${game.data.unread}</span>` : ""}</button>`).join("");
+    $("tabs").innerHTML = TABS.map(([t, n]) => `<button data-tab="${t}" aria-selected="${game.tab === t}">${n}${t === "informes" && game.unread ? `<span class="badge">${game.unread}</span>` : ""}</button>`).join("");
   }
 
   function renderPanel() {
@@ -97,7 +153,7 @@ export function mountUi(hooks: UiHooks) {
         : `<p class="small muted">Explora primero una casilla vecina.</p>`}`;
     }
     const head = `<div class="row"><h3>${t.kind === "kingdom" ? esc(t.name!) : TILE_NAMES[t.kind]}</h3><span class="lvl num">${x},${y}</span></div>`;
-    const busy = game.data.expeditions.length >= maxExpeditions(k.buildings.castle);
+    const busy = game.player.expeditions.length >= maxExpeditions(k.buildings.castle);
     const gatherBtn = (label: string) => `<div class="btns"><button class="btn primary" data-gather ${busy ? "disabled data-busy" : ""}>${label}</button></div>${busy ? `<p class="small muted">Todos tus recolectores están fuera.</p>` : ""}`;
     switch (t.kind) {
       case "home":
@@ -155,16 +211,28 @@ export function mountUi(hooks: UiHooks) {
   }
 
   function reportsSheet() {
-    const reports = game.data.reports;
+    const reports = game.player.reports;
     const body = reports.length
       ? reports.map((r) => {
           const lost = r.lost.length ? r.lost.map((l) => `${l.lost} ${(UNITS[l.key as UnitKey]?.name ?? l.key).toLowerCase()}`).join(", ") : "ninguna";
           const loot = r.kind === "defense" ? (r.won ? "No se llevaron nada." : `Te robaron ${lootText(r.loot)}.`) : r.won ? `Botín: ${lootText(r.loot)}.` : "Sin botín.";
           const verdict = r.kind === "defense" ? (r.won ? "Defensa con éxito" : "Defensa fallida") : r.won ? "Victoria " + "★".repeat(r.stars) + "☆".repeat(3 - r.stars) : "Derrota";
-          return `<div class="report ${r.won ? "win" : "loss"}"><div class="row"><b>${esc(r.title)}</b><span class="small muted">${new Date(r.at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</span></div><p class="small">${verdict}. Bajas propias: ${lost}. ${loot}</p></div>`;
+          return `<div class="report ${r.won ? "win" : "loss"}"><div class="row"><b>${esc(r.title)}</b><span class="small muted">${new Date(r.at * 1000).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</span></div><p class="small">${verdict}. Bajas propias: ${lost}. ${loot}</p></div>`;
         }).join("")
       : `<p class="desc">Aquí verás tus ataques y quién ha atacado tu reino. El primer ataque enemigo llega a los pocos minutos de empezar.</p>`;
-    return `<h2>Informes</h2>${body}<div class="btns" id="resetZone"><button class="btn danger small" data-reset>Empezar de nuevo</button></div>`;
+    const account = game.mode?.kind === "online"
+      ? `<div class="btns"><span class="small muted">Has entrado como <b>${esc(game.mode.username)}</b>.</span><button class="btn small" data-logout>Cerrar sesión</button></div>`
+      : `<div class="btns" id="resetZone"><button class="btn small" data-logout>Jugar con cuenta</button><button class="btn danger small" data-reset>Empezar de nuevo</button></div>`;
+    return `<h2>Informes</h2>${rivals()}${body}${account}`;
+  }
+
+  /** Otros jugadores en tu rango de poder (solo con cuenta). */
+  function rivals() {
+    if (!game.online) return "";
+    const list = game.targets.length
+      ? game.targets.map((t) => `<div class="report"><div class="row"><b>${esc(t.name)}</b><span class="small muted">${esc(t.username)}</span></div><div class="btns"><span class="small">Castillo <b class="num">${t.castle}</b> · Poder <b class="num">${fmt(t.power)}</b></span><button class="btn danger small" data-attack-player="${esc(t.id)}">Atacar</button></div></div>`).join("")
+      : `<p class="desc">Ahora mismo no hay jugadores en tu rango de poder sin escudo. Vuelve a mirar más tarde.</p>`;
+    return `<div class="card"><div class="row"><h3>Rivales</h3><button class="btn small" data-refresh-targets>Actualizar</button></div>${list}</div>`;
   }
 
   function bind() {
@@ -183,8 +251,11 @@ export function mountUi(hooks: UiHooks) {
     if (sel?.view === "world") {
       on("[data-explore]", () => game.explore(sel.x, sel.y));
       on("[data-gather]", () => game.gather(sel.x, sel.y));
-      on("[data-attack]", () => openAttack(sel.x, sel.y));
+      on("[data-attack]", () => openAttack({ kind: "tile", x: sel.x, y: sel.y }));
     }
+    on("[data-attack-player]", (el) => openAttack({ kind: "player", id: el.dataset.attackPlayer! }));
+    on("[data-refresh-targets]", () => void game.loadTargets());
+    on("[data-logout]", () => void game.logout());
     on("[data-reset]", () => {
       $("resetZone").innerHTML = `<span class="small">¿Borrar la partida?</span><button class="btn danger small" data-reset-yes>Sí, borrar</button><button class="btn small" data-reset-no>No</button>`;
       on("[data-reset-yes]", () => game.reset());
@@ -202,12 +273,13 @@ export function mountUi(hooks: UiHooks) {
     document.querySelectorAll<HTMLElement>("[data-left]").forEach((el) => (el.textContent = mmss(Number(el.dataset.left) - t)));
     document.querySelectorAll<HTMLButtonElement>("[data-need]").forEach((b) => {
       if (b.hasAttribute("data-busy")) return;
+      if (game.busy) return void (b.disabled = true);
       const bag = JSON.parse(b.dataset.need!) as Bag;
       b.disabled = !(Object.entries(bag) as [Resource, number][]).every(([r, v]) => k.res[r] >= v);
     });
     document.querySelectorAll<HTMLElement>(".cost span[data-r]").forEach((s) => s.classList.toggle("short", k.res[s.dataset.r as Resource] < Number(s.dataset.v)));
     const shield = document.getElementById("shield");
-    if (shield) shield.innerHTML = k.shieldUntil > t ? `<span class="pill shield">Escudo ${mmss(k.shieldUntil - t)}</span>` : game.data.nextRaid - t < 25 ? `<span class="pill warn">Ejército enemigo acercándose</span>` : "";
+    if (shield) shield.innerHTML = k.shieldUntil > t ? `<span class="pill shield">Escudo ${mmss(k.shieldUntil - t)}</span>` : !game.online && game.player.nextRaid - t < 25 ? `<span class="pill warn">Ejército enemigo acercándose</span>` : "";
   }
 
   // ---------- Ataque y batalla ----------
@@ -219,24 +291,31 @@ export function mountUi(hooks: UiHooks) {
     $("modal").innerHTML = "";
   }
 
-  function openAttack(x: number, y: number) {
-    const k = game.kingdom, t = tileAt(game.world, x, y)!;
+  function openAttack(target: { kind: "tile"; x: number; y: number } | { kind: "player"; id: string }) {
+    const k = game.kingdom;
     const rows = UNIT_KEYS.filter((u) => k.army[u] > 0).map((u) => `<label for="pick-${u}">${UNITS[u].name} <span class="muted small">(${k.army[u]})</span></label><input type="number" id="pick-${u}" min="0" max="${k.army[u]}" value="${k.army[u]}">`).join("");
     const dragon = isHatched(k.dragon) ? (dragonReady(k, now()) ? `<label for="pick-dragon">${k.dragon.name}, ${DRAGON_STAGES[dragonStage(dragonLevel(k.dragon))].toLowerCase()}</label><input type="checkbox" id="pick-dragon" checked>` : `<span class="muted">${k.dragon.name} está herido</span><span></span>`) : "";
     const any = rows || dragon.includes("checkbox");
-    const name = t.kind === "lair" ? `la guarida (nivel ${t.level})` : `${esc(t.name!)}`;
+    let name: string;
+    if (target.kind === "tile") {
+      const t = tileAt(game.world, target.x, target.y)!;
+      name = t.kind === "lair" ? `la guarida (nivel ${t.level})` : esc(t.name!);
+    } else name = esc(game.targets.find((x) => x.id === target.id)?.name ?? "al rival");
     modal(`<h2>Atacar ${name}</h2>
       ${any ? `<div class="pick">${rows}${dragon}</div>` : `<p class="muted">No tienes tropas. Entrena algunas en la pestaña Ejército.</p>`}
       <p class="desc small">Infantería gana a caballería, arqueros a infantería y voladores, caballería a arqueros. Los voladores ignoran la muralla.</p>
       <div class="btns"><button class="btn primary" id="go" ${any ? "" : "disabled"}>Lanzar ataque</button><button class="btn" data-close>Cancelar</button></div>`);
-    $("go").onclick = () => {
+    $("go").onclick = async () => {
       const units: Partial<Record<UnitKey, number>> = {};
       for (const u of UNIT_KEYS) {
         const el = document.getElementById("pick-" + u) as HTMLInputElement | null;
         if (el) units[u] = Math.max(0, Math.min(k.army[u], Math.floor(Number(el.value) || 0)));
       }
       const dEl = document.getElementById("pick-dragon") as HTMLInputElement | null;
-      const battle = game.attack(x, y, { units, dragon: !!dEl?.checked });
+      const orders = { units, dragon: !!dEl?.checked };
+      ($("go") as HTMLButtonElement).disabled = true;
+      const battle = target.kind === "tile" ? await game.attackTile(target.x, target.y, orders) : await game.attackPlayer(target.id, orders);
+      if (!battle) return closeModal();
       if (battle) playBattle(battle);
     };
   }
@@ -269,7 +348,7 @@ export function mountUi(hooks: UiHooks) {
       i++;
       if (i < result.rounds.length) setTimeout(step, reduced ? 60 : 650);
       else {
-        $("bend").innerHTML = `<div class="stars">${"★".repeat(result.stars)}${"☆".repeat(3 - result.stars)}</div><p><b>${result.attackerWon ? "¡Victoria!" : "Derrota."}</b> ${result.attackerWon ? `Botín: ${lootText(loot)}.` : "Tus supervivientes vuelven a casa."}</p><div class="btns"><button class="btn primary" data-close>Volver al mapa</button></div>`;
+        $("bend").innerHTML = `<div class="stars">${"★".repeat(result.stars)}${"☆".repeat(3 - result.stars)}</div><p><b>${result.attackerWon ? "¡Victoria!" : "Derrota."}</b> ${result.attackerWon ? `Botín: ${lootText(loot)}.` : "Tus supervivientes vuelven a casa."}</p><div class="btns"><button class="btn primary" data-close>Cerrar</button></div>`;
         $("bend").querySelector<HTMLElement>("[data-close]")!.onclick = closeModal;
       }
     };

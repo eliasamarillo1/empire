@@ -1,55 +1,22 @@
 import {
-  RESOURCES, TILE_NAMES, TILE_RESOURCE, addResources, advance, aiKingdomArmy, aiKingdomDefenses, aiRaidArmy, applyLosses,
-  canAfford, canExplore, carryCapacity, createKingdom, defenses, distance, exploreCost, feed, garrison, generateWorld, hatch,
-  initTile, lairArmy, lairLoot, maxExpeditions, ordersToGroups, protectedAmount, regrowWorld, reveal, simulate, startUpgrade,
-  tileAt, train, travelTime, validateOrders,
-  type ActionResult, type AttackOrders, type Bag, type BattleResult, type BuildingKey, type Kingdom, type KingdomEvent,
-  type Resource, type UnitKey, type World,
+  BUILDINGS, TILE_NAMES, attackTile, createPlayer, explore, feed, gather, hatch, startUpgrade, tickPlayer, train,
+  type AttackOrders, type Bag, type Battle, type BuildingKey, type Player, type PlayerEvent, type Resource, type UnitKey,
 } from "@empire/core";
-import { BUILDINGS, UNITS } from "@empire/core";
-
-export interface Expedition {
-  x: number;
-  y: number;
-  start: number;
-  end: number;
-  loot: Bag;
-}
-
-export interface Report {
-  at: number;
-  kind: "attack" | "defense";
-  /** Desde el punto de vista del jugador. */
-  won: boolean;
-  stars: number;
-  title: string;
-  loot: Bag;
-  lost: { key: string; lost: number }[];
-}
-
-export interface SaveData {
-  v: 2;
-  kingdom: Kingdom;
-  world: World;
-  expeditions: Expedition[];
-  reports: Report[];
-  unread: number;
-  nextRaid: number;
-}
+import { api, ApiError, type Target } from "./api";
 
 export type Tab = "reino" | "mapa" | "ejercito" | "informes";
 export type Selection = { view: "kingdom"; key: BuildingKey } | { view: "world"; x: number; y: number } | null;
 
-export interface Battle {
-  title: string;
-  result: BattleResult;
-  loot: Bag;
-}
+/** Sin conexión: la partida vive en este navegador. Con cuenta: el servidor manda. */
+export type Mode = { kind: "local" } | { kind: "online"; token: string; username: string; id: string };
 
-const SAVE_KEY = "empire-save-v2";
-const FIRST_RAID = 240;
+const SAVE_KEY = "empire-save-v3";
+const SESSION_KEY = "empire-session";
+const SYNC_SECONDS = 15;
 
-export const now = () => Date.now() / 1000;
+let clockOffset = 0;
+/** Hora del juego en segundos. Con cuenta se ajusta a la del servidor. */
+export const now = () => Date.now() / 1000 + clockOffset;
 
 export const lootText = (bag: Bag) =>
   (Object.entries(bag) as [Resource, number][])
@@ -57,56 +24,33 @@ export const lootText = (bag: Bag) =>
     .map(([r, v]) => `${Math.round(v)} de ${({ gold: "oro", wood: "madera", stone: "piedra", food: "comida" } as const)[r]}`)
     .join(", ") || "nada";
 
-/** Estado de la partida en este dispositivo. Más adelante se sincronizará con el servidor. */
+interface ServerPlayer extends Player {
+  id: string;
+  username: string;
+  serverTime: number;
+}
+
 class Game {
-  data: SaveData;
+  /** null hasta que el jugador elige cómo jugar. */
+  mode: Mode | null = null;
+  player: Player = createPlayer("Tu reino", Math.floor(Math.random() * 1e9), now());
   tab: Tab = "reino";
   selection: Selection = null;
+  unread = 0;
+  targets: Target[] = [];
+  busy = false;
+  private lastSync = 0;
   private listeners = new Set<() => void>();
   private toastListeners = new Set<(msg: string, bad: boolean) => void>();
 
-  constructor() {
-    this.data = this.load() ?? this.fresh();
-  }
-
-  fresh(): SaveData {
-    const t = now();
-    return {
-      v: 2, kingdom: createKingdom("Tu reino", t), world: generateWorld(Math.floor(Math.random() * 1e9)),
-      expeditions: [], reports: [], unread: 0, nextRaid: t + FIRST_RAID,
-    };
-  }
-
-  private load(): SaveData | null {
-    try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      const d = raw ? (JSON.parse(raw) as SaveData) : null;
-      return d && d.v === 2 ? d : null;
-    } catch {
-      return null;
-    }
-  }
-
-  save() {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
-    } catch {
-      /* sin almacenamiento: la partida dura lo que la pestaña */
-    }
-  }
-
-  reset() {
-    this.data = this.fresh();
-    this.selection = null;
-    this.save();
-    this.changed();
-  }
-
   get kingdom() {
-    return this.data.kingdom;
+    return this.player.kingdom;
   }
   get world() {
-    return this.data.world;
+    return this.player.world;
+  }
+  get online() {
+    return this.mode?.kind === "online";
   }
 
   onChange(fn: () => void) {
@@ -123,9 +67,82 @@ class Game {
     this.toastListeners.forEach((fn) => fn(msg, bad));
   }
 
+  // ---------- Arranque y sesión ----------
+
+  /** Recupera la sesión guardada, si hay. Si no, se queda esperando a la pantalla de acceso. */
+  async boot() {
+    const saved = readJson<Mode>(SESSION_KEY);
+    if (saved?.kind === "online") {
+      try {
+        this.adopt((await api.me(saved.token)).player);
+        this.mode = saved;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) removeKey(SESSION_KEY);
+        else this.toast("No se pudo conectar con el servidor. Puedes jugar sin conexión.", true);
+      }
+    } else if (saved?.kind === "local") this.playLocal();
+    this.changed();
+  }
+
+  playLocal() {
+    const save = readJson<Player>(SAVE_KEY);
+    if (save) this.player = save;
+    clockOffset = 0;
+    this.mode = { kind: "local" };
+    writeJson(SESSION_KEY, this.mode);
+    this.changed();
+  }
+
+  async login(username: string, password: string, register: boolean, kingdom?: string) {
+    const r = register ? await api.register(username, password, kingdom) : await api.login(username, password);
+    this.adopt(r.player);
+    this.mode = { kind: "online", token: r.token, username: r.player.username, id: r.player.id };
+    writeJson(SESSION_KEY, this.mode);
+    this.selection = null;
+    this.changed();
+  }
+
+  async logout() {
+    if (this.mode?.kind === "online") await api.logout(this.mode.token).catch(() => undefined);
+    removeKey(SESSION_KEY);
+    this.mode = null;
+    this.selection = null;
+    this.changed();
+  }
+
+  /** Borra la partida sin conexión. */
+  reset() {
+    this.player = createPlayer("Tu reino", Math.floor(Math.random() * 1e9), now());
+    this.selection = null;
+    this.save();
+    this.changed();
+  }
+
+  save() {
+    if (this.mode?.kind === "local") writeJson(SAVE_KEY, this.player);
+  }
+
+  /** Sustituye la partida por la del servidor y avisa de lo nuevo (asaltos recibidos). */
+  private adopt(p: ServerPlayer) {
+    clockOffset = p.serverTime - Date.now() / 1000;
+    const known = this.mode?.kind === "online" ? this.player.reports[0]?.at ?? 0 : Infinity;
+    for (const r of p.reports) {
+      if (r.at <= known) break;
+      if (r.kind === "defense") {
+        this.toast(r.won ? `Has rechazado un ataque: ${r.title}.` : `${r.title} y te robó ${lootText(r.loot)}.`, !r.won);
+        if (this.tab !== "informes") this.unread++;
+      }
+    }
+    this.player = p;
+    this.lastSync = now();
+  }
+
   setTab(tab: Tab) {
     this.tab = tab;
-    if (tab === "informes") this.data.unread = 0;
+    if (tab === "informes") {
+      this.unread = 0;
+      if (this.online) void this.loadTargets();
+    }
     if (tab === "reino" && this.selection?.view === "world") this.selection = null;
     if (tab === "mapa" && this.selection?.view === "kingdom") this.selection = null;
     this.changed();
@@ -136,196 +153,149 @@ class Game {
     this.changed();
   }
 
-  /** Avanza el tiempo. Devuelve true si cambió algo que haya que redibujar. */
-  tick(): boolean {
-    const t = now();
-    const k = this.kingdom;
-    const before = k.t;
-    const events = advance(k, t);
-    regrowWorld(this.world, Math.max(0, t - before));
-    for (const e of events) if (e.type !== "trained") this.toast(eventText(e));
-    let changed = events.length > 0;
+  // ---------- Tiempo ----------
 
-    for (const e of [...this.data.expeditions]) {
-      if (t < e.end) continue;
-      this.data.expeditions.splice(this.data.expeditions.indexOf(e), 1);
-      addResources(k, e.loot);
-      k.xp += 4;
-      this.toast(`Los recolectores vuelven con ${lootText(e.loot)}.`);
-      changed = true;
-    }
-    if (t >= this.data.nextRaid) {
-      this.data.nextRaid = t + 120 + Math.random() * 90;
-      if (t >= k.shieldUntil) this.raid(t);
-      changed = true;
-    }
-    if (changed) {
+  /** Avanza el reloj. Sin conexión decide también los asaltos; con cuenta solo anima y resincroniza. */
+  tick() {
+    if (!this.mode) return;
+    const events = tickPlayer(this.player, now(), { raids: !this.online });
+    for (const e of events) this.announce(e);
+    if (events.length) {
       this.save();
       this.changed();
     }
-    return changed;
+    if (this.online && !this.busy && now() - this.lastSync > SYNC_SECONDS) void this.sync();
   }
 
-  private act(r: ActionResult) {
+  private async sync() {
+    if (this.mode?.kind !== "online") return;
+    this.lastSync = now();
+    try {
+      this.adopt((await api.me(this.mode.token)).player);
+      this.changed();
+    } catch (e) {
+      this.handleError(e);
+    }
+  }
+
+  private announce(e: PlayerEvent) {
+    switch (e.type) {
+      case "upgraded":
+        return this.toast(`${BUILDINGS[e.key].name} sube a nivel ${e.level}.`);
+      case "hatched":
+        return this.toast(`¡Tu huevo ha eclosionado! Ha nacido ${e.name}.`);
+      case "expedition":
+        return this.toast(`Los recolectores vuelven con ${lootText(e.loot)}.`);
+      case "raid":
+        if (this.tab !== "informes") this.unread++;
+        return this.toast(e.lost ? `${e.from} ha saqueado tu reino. Revisa Informes.` : `Has rechazado el ataque de ${e.from}.`, e.lost);
+    }
+  }
+
+  // ---------- Acciones ----------
+
+  private handleError(e: unknown) {
+    if (e instanceof ApiError) {
+      if (e.status === 401) {
+        removeKey(SESSION_KEY);
+        this.mode = null;
+        this.changed();
+      }
+      this.toast(e.message, true);
+    } else this.toast("No se pudo conectar con el servidor.", true);
+  }
+
+  /**
+   * Ejecuta una acción: sin conexión, con las reglas de core sobre la partida local;
+   * con cuenta, pidiéndosela al servidor y quedándose con su respuesta.
+   */
+  private async act<T>(local: () => { ok: true; value?: T } | { ok: false; reason: string }, remote: (token: string) => Promise<{ player: ServerPlayer; battle?: T }>): Promise<T | undefined> {
+    if (this.mode?.kind === "online") {
+      if (this.busy) return;
+      this.busy = true;
+      this.changed();
+      try {
+        const r = await remote(this.mode.token);
+        this.adopt(r.player);
+        return r.battle;
+      } catch (e) {
+        this.handleError(e);
+      } finally {
+        this.busy = false;
+        this.changed();
+      }
+      return;
+    }
+    const r = local();
     if (!r.ok) this.toast(r.reason, true);
     this.save();
     this.changed();
-    return r.ok;
+    return r.ok ? r.value : undefined;
   }
 
   upgrade(key: BuildingKey) {
-    return this.act(startUpgrade(this.kingdom, key, now()));
+    return this.act(() => startUpgrade(this.kingdom, key, now()), (t) => api.post(t, "/api/me/upgrade", { building: key }));
   }
   train(unit: UnitKey, count: number) {
-    return this.act(train(this.kingdom, unit, count, now()));
+    return this.act(() => train(this.kingdom, unit, count, now()), (t) => api.post(t, "/api/me/train", { unit, count }));
   }
   hatch() {
-    return this.act(hatch(this.kingdom, now()));
+    return this.act(() => hatch(this.kingdom, now()), (t) => api.post(t, "/api/me/dragon", { action: "hatch" }));
   }
   feed() {
-    return this.act(feed(this.kingdom));
+    return this.act(() => feed(this.kingdom), (t) => api.post(t, "/api/me/dragon", { action: "feed" }));
   }
-
   explore(x: number, y: number) {
-    const t = tileAt(this.world, x, y);
-    if (!t || t.seen || !canExplore(this.world, x, y)) return;
-    const cost = exploreCost(this.world, x, y);
-    if (!canAfford(this.kingdom, cost)) return this.toast("Te falta comida para pagar a los exploradores.", true);
-    this.kingdom.res.food -= cost.food;
-    reveal(this.world, x, y);
-    this.kingdom.xp += 5;
-    this.save();
-    this.changed();
+    return this.act(() => explore(this.player, x, y), (t) => api.post(t, "/api/me/explore", { x, y }));
   }
-
-  /** Envía recolectores a un yacimiento o a excavar unas ruinas. */
   gather(x: number, y: number) {
-    const w = this.world;
-    const t = tileAt(w, x, y)!;
-    if (this.data.expeditions.length >= maxExpeditions(this.kingdom.buildings.castle))
-      return this.toast("Todos tus recolectores están fuera.", true);
-    const start = now();
-    let loot: Bag;
-    if (t.kind === "ruins") {
-      loot = { gold: 60 * t.level, wood: 40 * t.level, stone: 40 * t.level };
-      t.kind = "plain";
-      initTile(t, distance(w, x, y));
-    } else {
-      const r = TILE_RESOURCE[t.kind];
-      if (!r) return;
-      const amount = Math.floor(Math.min(t.amount ?? 0, carryCapacity(this.kingdom.buildings.castle)));
-      if (amount < 10) return this.toast("Este yacimiento está casi agotado. Vuelve más tarde.", true);
-      t.amount! -= amount;
-      loot = { [r]: amount };
-    }
-    this.data.expeditions.push({ x, y, start, end: start + travelTime(w, x, y), loot });
-    this.save();
-    this.changed();
+    return this.act(() => gather(this.player, x, y, now()), (t) => api.post(t, "/api/me/gather", { x, y }));
+  }
+  attackTile(x: number, y: number, orders: AttackOrders): Promise<Battle | undefined> {
+    return this.act<Battle>(() => attackTile(this.player, x, y, orders, now()), (t) => api.post(t, "/api/me/attack-tile", { x, y, orders }));
+  }
+  attackPlayer(defenderId: string, orders: AttackOrders): Promise<Battle | undefined> {
+    return this.act<Battle>(() => ({ ok: false, reason: "Necesitas una cuenta para atacar a otros jugadores" }), async (t) => {
+      const r = await api.post<{ player: ServerPlayer; battle: Battle }>(t, "/api/me/attack-player", { defenderId, orders });
+      this.targets = this.targets.filter((x) => x.id !== defenderId);
+      return r;
+    });
   }
 
-  /** Ataca una guarida o un reino IA del mapa. */
-  attack(x: number, y: number, orders: AttackOrders): Battle | null {
-    const k = this.kingdom;
-    const w = this.world;
-    const tile = tileAt(w, x, y)!;
-    const t = now();
-    const invalid = validateOrders(k, orders, t);
-    if (invalid) {
-      this.toast(invalid, true);
-      return null;
+  async loadTargets() {
+    if (this.mode?.kind !== "online") return;
+    try {
+      this.targets = (await api.targets(this.mode.token)).targets;
+      this.changed();
+    } catch (e) {
+      this.handleError(e);
     }
-    const isLair = tile.kind === "lair";
-    const title = isLair ? `Guarida (nivel ${tile.level})` : `${tile.name} (castillo ${tile.level})`;
-    const result = simulate(
-      ordersToGroups(k, orders),
-      isLair ? lairArmy(tile.level) : aiKingdomArmy(tile.level),
-      isLair ? { wall: 0, tower: 0 } : aiKingdomDefenses(tile.level),
-      Math.floor(Math.random() * 2 ** 31),
-    );
-    applyLosses(k, result.attackerLosses, t);
-    if (orders.dragon && k.dragon) k.dragon.xp += result.attackerWon ? 25 * tile.level : 8;
-
-    let loot: Bag = {};
-    if (result.attackerWon) {
-      if (isLair) {
-        loot = lairLoot(tile.level);
-        k.xp += 20 * tile.level;
-        tile.kind = (["plain", "forest", "mountain"] as const)[Math.floor(Math.random() * 3)];
-        initTile(tile, distance(w, x, y));
-        this.respawnLair();
-      } else {
-        const v = Math.round(tile.treasure! * (0.12 + 0.06 * result.stars));
-        loot = { gold: v, wood: v, stone: v, food: v };
-        tile.treasure! -= v;
-        tile.shieldUntil = t + 180;
-        k.xp += 30 * tile.level;
-      }
-      addResources(k, loot);
-    }
-    this.addReport({
-      at: Date.now(), kind: "attack", won: result.attackerWon, stars: result.stars, title: `Ataque a ${title}`, loot,
-      lost: result.attackerLosses.filter((l) => l.lost > 0 && l.key !== "dragon"),
-    }, false);
-    this.save();
-    this.changed();
-    return { title: `Ataque a ${title}`, result, loot };
-  }
-
-  private respawnLair() {
-    const w = this.world;
-    for (let i = 0; i < 60; i++) {
-      const x = Math.floor(Math.random() * w.size), y = Math.floor(Math.random() * w.size);
-      const t = tileAt(w, x, y)!;
-      if (distance(w, x, y) > 2 && !t.seen && (t.kind === "plain" || t.kind === "forest" || t.kind === "mountain")) {
-        t.kind = "lair";
-        initTile(t, distance(w, x, y));
-        return;
-      }
-    }
-  }
-
-  /** Un reino IA asalta al jugador. Defienden las tropas en casa, la muralla y las torres. */
-  private raid(t: number) {
-    const k = this.kingdom;
-    const rivals = this.world.tiles.filter((x) => x.kind === "kingdom");
-    rivals.sort((a, b) => Math.abs(a.level - k.buildings.castle) - Math.abs(b.level - k.buildings.castle));
-    const from = rivals[Math.floor(Math.random() * Math.min(2, rivals.length))]?.name ?? "Bandidos";
-    const result = simulate(aiRaidArmy(k.buildings.castle), garrison(k, t), defenses(k), Math.floor(Math.random() * 2 ** 31));
-    applyLosses(k, result.defenderLosses, t);
-    const lost: Bag = {};
-    if (result.attackerWon) {
-      const p = protectedAmount(k);
-      for (const r of RESOURCES) {
-        const v = Math.round(Math.max(0, k.res[r] - p) * 0.3);
-        k.res[r] -= v;
-        lost[r] = v;
-      }
-    } else k.xp += 15;
-    k.shieldUntil = t + 240;
-    this.addReport({
-      at: Date.now(), kind: "defense", won: !result.attackerWon, stars: result.stars, title: `${from} atacó tu reino`, loot: lost,
-      lost: result.defenderLosses.filter((l) => l.lost > 0 && l.key !== "dragon"),
-    }, true);
-    this.toast(result.attackerWon ? `${from} ha saqueado tu reino. Revisa Informes.` : `Has rechazado el ataque de ${from}.`, result.attackerWon);
-  }
-
-  private addReport(r: Report, notify: boolean) {
-    this.data.reports.unshift(r);
-    this.data.reports = this.data.reports.slice(0, 30);
-    if (notify && this.tab !== "informes") this.data.unread++;
   }
 }
 
-function eventText(e: KingdomEvent) {
-  switch (e.type) {
-    case "upgraded":
-      return `${BUILDINGS[e.key].name} sube a nivel ${e.level}.`;
-    case "trained":
-      return `${UNITS[e.unit].name}: una unidad lista.`;
-    case "hatched":
-      return `¡Tu huevo ha eclosionado! Ha nacido ${e.name}.`;
+function readJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* sin almacenamiento: la partida dura lo que la pestaña */
+  }
+}
+function removeKey(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* nada que borrar */
   }
 }
 
 export { TILE_NAMES };
+export type { Battle };
 export const game = new Game();
