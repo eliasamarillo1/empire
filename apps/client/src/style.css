@@ -102,3 +102,18 @@ table.units th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
 .toast { background: var(--panel2); border: 1px solid var(--brass-dim); border-radius: 8px; padding: 8px 12px; font-size: .9rem; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
 .toast.bad { border-color: var(--ember); }
 @media (prefers-reduced-motion: no-preference) { .toast { animation: toast-in .25s ease-out; } @keyframes toast-in { from { transform: translateY(-6px); opacity: 0; } } }
+
+/* Pantalla de acceso */
+.off { display: none !important; }
+#login { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 16px); background: var(--bg); overflow: auto; }
+.login { width: min(400px, 100%); gap: 10px; }
+.login label { font-size: .85rem; color: var(--muted); margin-bottom: -6px; }
+.login input { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; width: 100%; }
+.login .btn { width: 100%; }
+.brand.big { font-size: 3rem; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; background: none; border: 0; padding: 8px; color: var(--muted); }
+.seg button.on { background: var(--panel2); color: var(--fg); }
+.error { color: var(--bad); font-size: .88rem; min-height: 1.2em; }
+/* El canvas no puede quedarse a tamaño cero: se oculta sin quitarlo del flujo */
+#game.off { display: block !important; visibility: hidden; }

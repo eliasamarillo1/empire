@@ -137,7 +137,7 @@ export class WorldScene extends Phaser.Scene {
     const w = game.world;
     const c = center(w);
     const t0 = now();
-    for (const e of game.data.expeditions) {
+    for (const e of game.player.expeditions) {
       const f = Phaser.Math.Clamp((t0 - e.start) / (e.end - e.start), 0, 1);
       const k = f < 0.5 ? f * 2 : 2 - f * 2;
       const p = iso(c + 0.5 + (e.x - c) * k, c + 0.5 + (e.y - c) * k);

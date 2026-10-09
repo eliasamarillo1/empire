@@ -19,8 +19,8 @@ Necesitas Node 22.
 
 ```bash
 npm install
-npm run dev          # el juego en http://localhost:5173
-npm run dev:server   # la API en http://localhost:3000
+npm run dev:server   # la API en http://localhost:3000 (guarda en apps/server/data/empire.json)
+npm run dev          # el juego en http://localhost:5173, con /api redirigido al servidor
 npm test             # tests de core y del servidor
 npm run build        # versión para publicar en apps/client/dist
 ```
@@ -29,8 +29,19 @@ npm run build        # versión para publicar en apps/client/dist
 
 La batalla se simula por rondas con una semilla. Con los mismos ejércitos y la misma semilla el resultado es idéntico. En un ataque entre jugadores el cliente solo envía qué tropas manda; el servidor elige la semilla, simula y devuelve las rondas para que el cliente las reproduzca. Así nadie puede inventarse una victoria.
 
+## Cuentas y modo sin conexión
+
+Al abrir el juego puedes entrar con tu cuenta, crear una o jugar sin conexión.
+
+- **Con cuenta**: el servidor guarda tu partida y decide todo (producción, obras, recolección, batallas y asaltos de la IA). El cliente solo envía órdenes y muestra lo que el servidor responde. Las casillas sin explorar no se envían, así que no se puede leer el mapa escondido. En Informes aparecen los rivales de tu rango de poder (70 % a 130 % del tuyo) y puedes atacarles aunque no estén conectados; ellos reciben el informe al volver.
+- **Sin conexión**: la partida vive en el navegador y las mismas reglas de `core` se ejecutan en local.
+
+Las contraseñas se guardan con scrypt y sal. La sesión es un token aleatorio que caduca a los 30 días.
+
+Para apuntar el juego a un servidor en otra dirección (por ejemplo en la app móvil), compílalo con `VITE_API_URL=https://tu-servidor npm run build`.
+
 ## Estado
 
-- El cliente funciona solo, con la partida guardada en el navegador y reinos rivales controlados por la máquina.
-- El servidor ya tiene la API de reinos y ataques, con almacenamiento en memoria.
-- Próximos pasos: cuentas de jugador, PostgreSQL, conectar el cliente al servidor y empaquetar para móvil con Capacitor.
+- Hecho: reino, mapa, ejército, dragón, batallas, cuentas, guardado en el servidor y PvP asíncrono.
+- El servidor guarda en un fichero JSON. Es suficiente para probar con amigos; para muchos jugadores tocará PostgreSQL.
+- Próximos pasos: PostgreSQL, empaquetado para móvil con Capacitor y arte definitivo.

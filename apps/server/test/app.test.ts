@@ -1,65 +1,123 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { simulate, ordersToGroups, garrison, defenses, createKingdom } from "@empire/core";
+import { createKingdom, defenses, garrison, ordersToGroups, simulate } from "@empire/core";
 import { buildApp } from "../src/app";
+import { Store } from "../src/store";
 
-function setup() {
+function setup(store = new Store()) {
   let now = 1000;
-  const app = buildApp({ clock: () => now, seed: () => 1234 });
-  return { app, tick: (s: number) => (now += s) };
+  const app = buildApp({ store, clock: () => now, seed: () => 1234 });
+  return { app, store, tick: (s: number) => (now += s) };
 }
-const post = (app: ReturnType<typeof buildApp>, url: string, payload: object) => app.inject({ method: "POST", url, payload });
+type App = ReturnType<typeof buildApp>;
+const post = (app: App, url: string, payload: object, token?: string) =>
+  app.inject({ method: "POST", url, payload, headers: token ? { authorization: `Bearer ${token}` } : {} });
+const get = (app: App, url: string, token: string) => app.inject({ method: "GET", url, headers: { authorization: `Bearer ${token}` } });
+const register = async (app: App, username: string) => (await post(app, "/api/auth/register", { username, password: "contraseña1" })).json();
 
-describe("API", () => {
-  it("crea un reino y lo consulta", async () => {
+describe("cuentas", () => {
+  it("registra, entra y rechaza contraseñas malas", async () => {
     const { app } = setup();
-    const res = await post(app, "/api/kingdoms", { name: "Valdoria" });
-    expect(res.statusCode).toBe(201);
-    const { id } = res.json();
-    const got = await app.inject({ method: "GET", url: `/api/kingdoms/${id}` });
-    expect(got.json().kingdom.name).toBe("Valdoria");
+    const r = await post(app, "/api/auth/register", { username: "elias", password: "contraseña1", kingdom: "Valdoria" });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().player.kingdom.name).toBe("Valdoria");
+    expect((await post(app, "/api/auth/register", { username: "ELIAS", password: "otra-clave" })).statusCode).toBe(409);
+    expect((await post(app, "/api/auth/login", { username: "elias", password: "mala-clave" })).statusCode).toBe(401);
+    const ok = await post(app, "/api/auth/login", { username: "Elias", password: "contraseña1" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().player.username).toBe("elias");
   });
 
+  it("valida usuario y contraseña", async () => {
+    const { app } = setup();
+    expect((await post(app, "/api/auth/register", { username: "a", password: "contraseña1" })).statusCode).toBe(400);
+    expect((await post(app, "/api/auth/register", { username: "elias", password: "corta" })).statusCode).toBe(400);
+  });
+
+  it("pide sesión para jugar y la cierra al salir", async () => {
+    const { app } = setup();
+    expect((await app.inject({ method: "GET", url: "/api/me" })).statusCode).toBe(401);
+    const { token } = await register(app, "elias");
+    expect((await get(app, "/api/me", token)).statusCode).toBe(200);
+    await post(app, "/api/auth/logout", {}, token);
+    expect((await get(app, "/api/me", token)).statusCode).toBe(401);
+  });
+
+  it("no envía el mapa sin explorar", async () => {
+    const { app } = setup();
+    const { player } = await register(app, "elias");
+    const hidden = player.world.tiles.filter((t: { seen: boolean }) => !t.seen);
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(hidden.every((t: { kind: string; name?: string }) => t.kind === "plain" && !t.name)).toBe(true);
+    expect(player.world.seed).toBe(0);
+  });
+
+  it("guarda las partidas en disco y las recupera", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "empire-")), "db.json");
+    const first = setup(new Store(file));
+    const { token } = await register(first.app, "elias");
+    await post(first.app, "/api/me/upgrade", { building: "castle" }, token);
+    first.store.flush();
+    const second = setup(new Store(file));
+    const me = (await get(second.app, "/api/me", token)).json();
+    expect(me.player.kingdom.upgrade.key).toBe("castle");
+  });
+});
+
+describe("partida en el servidor", () => {
   it("aplica la producción según el reloj del servidor", async () => {
     const { app, tick } = setup();
-    const { id } = (await post(app, "/api/kingdoms", { name: "A" })).json();
+    const { token } = await register(app, "elias");
     tick(60);
-    const k = (await app.inject({ method: "GET", url: `/api/kingdoms/${id}` })).json().kingdom;
+    const k = (await get(app, "/api/me", token)).json().player.kingdom;
     expect(k.res.gold).toBeCloseTo(400 + 0.5 * 60);
   });
 
   it("rechaza mejoras no permitidas", async () => {
     const { app } = setup();
-    const { id } = (await post(app, "/api/kingdoms", { name: "A" })).json();
-    const res = await post(app, `/api/kingdoms/${id}/upgrade`, { building: "farm" });
-    expect(res.statusCode).toBe(409);
-    expect((await post(app, `/api/kingdoms/${id}/upgrade`, { building: "castle" })).statusCode).toBe(200);
+    const { token } = await register(app, "elias");
+    expect((await post(app, "/api/me/upgrade", { building: "farm" }, token)).statusCode).toBe(409);
+    expect((await post(app, "/api/me/upgrade", { building: "castle" }, token)).statusCode).toBe(200);
   });
 
-  it("resuelve un ataque con la semilla del servidor y da escudo al defensor", async () => {
+  it("explora y envía recolectores", async () => {
     const { app } = setup();
-    const a = (await post(app, "/api/kingdoms", { name: "A" })).json().id;
-    const d = (await post(app, "/api/kingdoms", { name: "D" })).json().id;
-    const targets = (await app.inject({ method: "GET", url: `/api/kingdoms/${a}/targets` })).json().targets;
-    expect(targets.map((t: { id: string }) => t.id)).toEqual([d]);
+    const { token, player } = await register(app, "elias");
+    const c = Math.floor(player.world.size / 2);
+    expect((await post(app, "/api/me/explore", { x: c + 3, y: c }, token)).statusCode).toBe(200);
+    expect((await post(app, "/api/me/explore", { x: 0, y: 0 }, token)).statusCode).toBe(409);
+  });
+});
 
-    // Lo que el cliente puede reproducir por su cuenta con la semilla devuelta
+describe("PvP", () => {
+  it("resuelve el ataque con la semilla del servidor y avisa al defensor", async () => {
+    const { app } = setup();
+    const a = await register(app, "atacante");
+    const d = await register(app, "defensor");
+    const targets = (await get(app, "/api/me/targets", a.token)).json().targets;
+    expect(targets.map((t: { id: string }) => t.id)).toEqual([d.player.id]);
+
+    // El cliente puede reproducir la batalla por su cuenta con la semilla devuelta
     const k = createKingdom("x", 1000);
     const expected = simulate(ordersToGroups(k, { units: { inf: 8 }, dragon: false }), garrison(k, 1000), defenses(k), 1234);
 
-    const res = await post(app, "/api/attacks", { attackerId: a, defenderId: d, orders: { units: { inf: 8 }, dragon: false } });
+    const res = await post(app, "/api/me/attack-player", { defenderId: d.player.id, orders: { units: { inf: 8 }, dragon: false } }, a.token);
     expect(res.statusCode).toBe(200);
-    expect(res.json().seed).toBe(1234);
-    expect(res.json().result.rounds).toEqual(expected.rounds);
+    expect(res.json().battle.seed).toBe(1234);
+    expect(res.json().battle.result.rounds).toEqual(expected.rounds);
 
-    const again = await post(app, "/api/attacks", { attackerId: a, defenderId: d, orders: { units: { inf: 1 }, dragon: false } });
-    expect(again.statusCode).toBe(409);
+    const defender = (await get(app, "/api/me", d.token)).json().player;
+    expect(defender.reports[0]).toMatchObject({ kind: "defense", title: `Reino de atacante atacó tu reino` });
+    expect((await post(app, "/api/me/attack-player", { defenderId: d.player.id, orders: { units: { inf: 1 } } }, a.token)).statusCode).toBe(409);
   });
 
-  it("no deja mandar más tropas de las que tienes", async () => {
+  it("no deja mandar más tropas de las que tienes ni atacarte a ti mismo", async () => {
     const { app } = setup();
-    const a = (await post(app, "/api/kingdoms", { name: "A" })).json().id;
-    const d = (await post(app, "/api/kingdoms", { name: "D" })).json().id;
-    const res = await post(app, "/api/attacks", { attackerId: a, defenderId: d, orders: { units: { inf: 500 } } });
-    expect(res.statusCode).toBe(400);
+    const a = await register(app, "atacante");
+    const d = await register(app, "defensor");
+    expect((await post(app, "/api/me/attack-player", { defenderId: d.player.id, orders: { units: { inf: 500 } } }, a.token)).statusCode).toBe(400);
+    expect((await post(app, "/api/me/attack-player", { defenderId: a.player.id, orders: { units: { inf: 1 } } }, a.token)).statusCode).toBe(400);
   });
 });
