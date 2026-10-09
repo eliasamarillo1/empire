@@ -1,0 +1,607 @@
+<title>Empire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: mesa de guerra. Cabecera con recursos, pestañas, y cada vista en rejilla que se apila en móvil. Tema oscuro único a propósito (pantalla de juego). */
+:root{
+  --bg:#111915; --panel:#19241f; --panel2:#213029; --line:#30423a;
+  --fg:#ebe5d4; --muted:#9fab9f; --brass:#d6a64c; --brass-dim:#8a6c33;
+  --ember:#e2653c; --good:#86c46f; --bad:#e05a4f; --sky:#7fb3d6;
+  --f-display:"Pirata One", "UnifrakturCook", Georgia, serif;
+  --f-body:"Alegreya Sans", "Trebuchet MS", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-body);font-size:16px;line-height:1.45}
+.app{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:12px 40px;display:flex;flex-direction:column;gap:14px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,canvas:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.brand{font-family:var(--f-display);font-size:2.2rem;line-height:1;color:var(--brass);letter-spacing:.02em}
+.brand small{display:block;font-family:var(--f-body);font-size:.8rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.res{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 auto}
+.chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 10px;min-width:0}
+.chip .dot{width:10px;height:10px;border-radius:2px;flex:none}
+.chip b{font-weight:600}
+.chip .cap{color:var(--muted);font-size:.78rem}
+.chip .rate{color:var(--good);font-size:.75rem}
+.d-gold{background:#e2b84a}.d-wood{background:#8d6a3f}.d-stone{background:#a3a6a0}.d-food{background:#9cc35a}
+
+.status{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--muted);font-size:.92rem;align-items:center}
+.status strong{color:var(--fg)}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.78rem;border:1px solid var(--line)}
+.pill.shield{color:var(--sky);border-color:var(--sky)}
+.pill.warn{color:var(--ember);border-color:var(--ember)}
+.xpbar{display:inline-block;width:90px;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;vertical-align:middle}
+.xpbar i{display:block;height:100%;background:var(--brass)}
+
+nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 14px;color:var(--muted);font-weight:500;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--brass)}
+nav.tabs .badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:var(--ember);color:#1a0e08;font-size:.75rem;font-weight:700}
+
+h2{font-family:var(--f-display);font-weight:400;font-size:1.6rem;margin:0;color:var(--brass);text-wrap:balance}
+h3{margin:0;font-size:1.05rem}
+.lead{color:var(--muted);margin:0;max-width:65ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card.locked{opacity:.55}
+.card .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lvl{font-family:var(--f-mono);font-size:.85rem;color:var(--brass)}
+.desc{color:var(--muted);font-size:.9rem;margin:0}
+.cost{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:.85rem}
+.cost span{display:inline-flex;align-items:center;gap:4px}
+.cost span.short{color:var(--bad)}
+.cost .dot{width:8px;height:8px;border-radius:2px}
+.btn{background:var(--panel2);border:1px solid var(--brass-dim);border-radius:7px;padding:6px 12px;font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--brass);background:#2a3b33}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#1c160a}
+.btn.primary:hover:not(:disabled){background:#e4b864}
+.btn.danger{border-color:var(--ember);color:var(--ember)}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.prog{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--brass);width:0}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+
+.mapwrap{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.mapbox{flex:1 1 420px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+#map{display:block;width:100%;height:auto;touch-action:manipulation;cursor:pointer;image-rendering:pixelated}
+.side{flex:1 1 260px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--muted);padding:6px 4px 0}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+table.units{width:100%;border-collapse:collapse;font-size:.92rem}
+table.units td,table.units th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+table.units th{color:var(--muted);font-weight:500;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.tablewrap{overflow-x:auto}
+
+.dragon{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+#dragonCanvas{width:180px;height:140px;max-width:100%;background:var(--panel2);border-radius:8px}
+
+.report{border-left:3px solid var(--line);padding:6px 10px;background:var(--panel);border-radius:0 8px 8px 0}
+.report.win{border-left-color:var(--good)}.report.loss{border-left-color:var(--bad)}
+.report .when{color:var(--muted);font-size:.8rem}
+
+.modal{position:fixed;inset:0;background:rgba(5,8,7,.78);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.modal .box{background:var(--panel);border:1px solid var(--brass-dim);border-radius:12px;padding:16px;width:min(640px,100%);max-height:92vh;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:520px){.sides{grid-template-columns:1fr}}
+.grp{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:.88rem;margin-bottom:6px}
+.grp .prog{grid-column:1/-1}
+.grp.def .prog i{background:var(--ember)}
+.log{font-family:var(--f-mono);font-size:.8rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;max-height:160px;overflow:auto;white-space:pre-wrap}
+.stars{font-size:1.6rem;color:var(--brass);letter-spacing:.2em}
+.pick{display:grid;grid-template-columns:1fr 90px;gap:6px 10px;align-items:center}
+.pick input[type=number]{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:var(--f-mono)}
+
+#toasts{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:30;max-width:min(360px,calc(100vw - 32px))}
+.toast{background:var(--panel2);border:1px solid var(--brass-dim);border-radius:8px;padding:8px 12px;font-size:.92rem;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.toast.bad{border-color:var(--ember)}
+@media (prefers-reduced-motion:no-preference){.toast{animation:in .25s ease-out}@keyframes in{from{transform:translateY(8px);opacity:0}}}
+footer{color:var(--muted);font-size:.8rem;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">Empire<small>Prototipo jugable</small></div>
+    <div class="res" id="res"></div>
+  </header>
+  <div class="status" id="status"></div>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <main id="view"></main>
+  <footer>
+    <span>Tu partida se guarda en este navegador. El tiempo está acelerado para probar rápido.</span>
+    <span id="resetZone"><button class="btn danger small" id="resetBtn">Empezar de nuevo</button></span>
+  </footer>
+</div>
+<div id="modalRoot"></div>
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+"use strict";
+// ---------- Reglas (esto pasaría a packages/core) ----------
+const RES = ["gold","wood","stone","food"];
+const RNAME = {gold:"Oro",wood:"Madera",stone:"Piedra",food:"Comida"};
+const BUILD = {
+  castle:{n:"Castillo",d:"Nivel del reino. Ningún edificio puede superar su nivel.",cost:{gold:120,wood:150,stone:150},unlock:1,start:1,max:10,slow:2},
+  house:{n:"Casas",d:"Los aldeanos pagan impuestos en oro.",prod:"gold",rate:.5,cost:{wood:60,stone:20},unlock:1,start:1},
+  farm:{n:"Granja",d:"Produce comida para tropas y criaturas.",prod:"food",rate:.6,cost:{gold:30,wood:50},unlock:1,start:1},
+  sawmill:{n:"Aserradero",d:"Produce madera.",prod:"wood",rate:.5,cost:{gold:40,wood:20,stone:20},unlock:1,start:1},
+  quarry:{n:"Cantera",d:"Produce piedra.",prod:"stone",rate:.4,cost:{gold:40,wood:40},unlock:1,start:1},
+  storage:{n:"Almacén",d:"Más capacidad y protege parte de tus recursos del saqueo.",cost:{wood:80,stone:60},unlock:1,start:1},
+  barracks:{n:"Cuartel",d:"Entrena infantería (nv 1) y arqueros (nv 2). Cada nivel entrena más rápido.",cost:{gold:60,wood:80},unlock:1,start:1},
+  wall:{n:"Muralla",d:"Absorbe el daño de los atacantes de tierra. Los voladores pasan por encima.",cost:{stone:100,wood:30},unlock:2,start:0},
+  tower:{n:"Torres",d:"Disparan a los atacantes en cada ronda.",cost:{stone:80,gold:40},unlock:2,start:0},
+  nest:{n:"Nido de dragón",d:"Eclosiona tu dragón. Su nivel limita cuánto puede crecer.",cost:{gold:120,stone:120},unlock:2,start:0},
+  stable:{n:"Establo",d:"Entrena caballería.",cost:{gold:90,wood:120},unlock:3,start:0},
+  den:{n:"Guarida de bestias",d:"Lobos (nv 1), grifos (nv 2) y gólems (nv 3).",cost:{gold:100,stone:100,food:80},unlock:3,start:0},
+};
+const UNITS = {
+  inf:{n:"Infantería",cls:"inf",atk:8,hp:40,cost:{gold:15,food:10},t:2,b:"barracks",bl:1,tip:"Gana a caballería"},
+  arc:{n:"Arqueros",cls:"arc",atk:10,hp:24,cost:{gold:18,wood:12},t:2,b:"barracks",bl:2,tip:"Gana a infantería y voladores"},
+  cav:{n:"Caballería",cls:"cav",atk:14,hp:55,cost:{gold:35,food:20},t:3,b:"stable",bl:1,tip:"Gana a arqueros"},
+  wolf:{n:"Lobos",cls:"beast",atk:12,hp:30,cost:{food:30},t:2,b:"den",bl:1,tip:"Baratos y rápidos"},
+  griffin:{n:"Grifos",cls:"fly",fly:true,atk:22,hp:60,cost:{gold:60,food:40},t:5,b:"den",bl:2,tip:"Voladores, cazan arqueros"},
+  golem:{n:"Gólems",cls:"tank",atk:10,hp:160,cost:{stone:90,gold:30},t:6,b:"den",bl:3,tip:"Aguantan mucho daño"},
+};
+const STAGES = ["Cría","Joven","Adulto","Anciano"];
+const T = {plain:{n:"Pradera",c:"#5f7d43",r:"food"},forest:{n:"Bosque",c:"#2c5233",r:"wood"},mountain:{n:"Montaña",c:"#6d695f",r:"stone"},
+  gold:{n:"Mina de oro",c:"#8c7330",r:"gold"},water:{n:"Lago",c:"#284660"},lair:{n:"Guarida de monstruos",c:"#5a2a2a"},
+  ruins:{n:"Ruinas",c:"#4f4a3f"},kingdom:{n:"Reino",c:"#4b3a6b"},home:{n:"Tu reino",c:"#7a5d22"}};
+const KNAMES = ["Valdoria","Karn Dur","Isenmar","Rocaferro","Brasaluz","Hielonorte","Ostmark","Lunaria","Velmora","Torreval"];
+const MAPN = 21, C = 10;
+
+const now = () => Date.now()/1000;
+const clamp = (v,a,b) => Math.max(a,Math.min(b,v));
+const dist = (x,y) => Math.max(Math.abs(x-C),Math.abs(y-C));
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let R = Math.random;
+
+function bCost(k,l){const s=Math.pow(1.55,l);const o={};for(const r in BUILD[k].cost)o[r]=Math.round(BUILD[k].cost[r]*s);return o}
+function bTime(k,l){return Math.round(4*Math.pow(l+1,1.6)*(BUILD[k].slow||1))}
+function cap(){return 600+600*S.b.storage+200*S.b.castle}
+function prot(){return 150*S.b.storage}
+function rate(r){let v=0;for(const k in BUILD)if(BUILD[k].prod===r)v+=BUILD[k].rate*S.b[k];return v}
+function afford(c){for(const r in c)if((S.res[r]||0)<c[r])return false;return true}
+function pay(c){for(const r in c)S.res[r]-=c[r]}
+function gain(o){const cp=cap();for(const r in o)if(RES.includes(r))S.res[r]=Math.min(cp,S.res[r]+o[r])}
+function plevel(){return 1+Math.floor(Math.sqrt(S.xp/40))}
+function addXp(n){const before=plevel();S.xp+=n;if(plevel()>before)toast(`Subes a nivel de jugador ${plevel()}.`)}
+function dLevel(){return 1+Math.floor(Math.sqrt(S.dragon.xp/30))}
+function dMax(){return 3*S.b.nest+1}
+function dStage(l){return l>=11?3:l>=7?2:l>=4?1:0}
+function dStats(){const l=dLevel(),s=dStage(l);return{atk:Math.round((30+12*l)*(1+.25*s)),hp:Math.round((150+60*l)*(1+.25*s))}}
+function dReady(){return S.dragon&&S.dragon.hatched&&now()>=S.dragon.wounded}
+function trainTime(u){const d=UNITS[u];return d.t*Math.max(.4,1-.07*(S.b[d.b]-1))}
+function maxExped(){return 1+Math.floor(S.b.castle/2)}
+function power(){let p=S.b.castle*100;for(const k in BUILD)p+=S.b[k]*15;for(const u in UNITS)p+=S.army[u]*(UNITS[u].atk+UNITS[u].hp/4);if(S.dragon&&S.dragon.hatched){const s=dStats();p+=s.atk+s.hp/4}return Math.round(p)}
+
+// ---------- Mundo ----------
+function genMap(seed){
+  const r=rng(seed);
+  const g=7,coarse=()=>Array.from({length:g*g},()=>r());
+  const el=coarse(),mo=coarse();
+  const samp=(a,x,y)=>{const fx=x/(MAPN-1)*(g-1),fy=y/(MAPN-1)*(g-1),ix=Math.min(g-2,Math.floor(fx)),iy=Math.min(g-2,Math.floor(fy)),tx=fx-ix,ty=fy-iy;
+    const v=(i,j)=>a[j*g+i];return (v(ix,iy)*(1-tx)+v(ix+1,iy)*tx)*(1-ty)+(v(ix,iy+1)*(1-tx)+v(ix+1,iy+1)*tx)*ty};
+  const tiles=[];
+  for(let y=0;y<MAPN;y++)for(let x=0;x<MAPN;x++){
+    const e=samp(el,x,y)+(r()-.5)*.18,m=samp(mo,x,y)+(r()-.5)*.2,d=dist(x,y);
+    let k=e<.22&&d>2?"water":e>.68?"mountain":m>.55?"forest":"plain";
+    const t={k,seen:d<=2};
+    if(k!=="water"&&d>1){const q=r();if(q<.035)t.k="gold";else if(q<.11)t.k="lair";else if(q<.14)t.k="ruins"}
+    tiles.push(t);
+  }
+  const at=(x,y)=>tiles[y*MAPN+x];
+  at(C,C).k="home";
+  // reinos IA, más fuertes cuanto más lejos
+  const names=[...KNAMES].sort(()=>r()-.5);let placed=0,tries=0;
+  while(placed<8&&tries<500){tries++;const x=Math.floor(r()*MAPN),y=Math.floor(r()*MAPN),d=dist(x,y);
+    if(d<3)continue;let near=false;for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++){const t=tiles[(y+j)*MAPN+(x+i)];if(t&&t.k==="kingdom")near=true}
+    if(near)continue;const t=at(x,y);t.k="kingdom";t.name=names[placed];placed++}
+  for(let y=0;y<MAPN;y++)for(let x=0;x<MAPN;x++)initTile(at(x,y),dist(x,y));
+  return tiles;
+}
+function initTile(t,d){
+  t.lvl=clamp(Math.ceil(d/2),1,8);
+  if(T[t.k].r){t.max=Math.round((t.k==="gold"?260:180)*(1+d*.25));t.amt=t.max}
+  if(t.k==="kingdom"){t.lvl=clamp(1+Math.floor(d/2),1,9);t.pool=300*t.lvl;t.shield=0}
+  if(t.k==="lair"){t.amt=undefined}
+}
+const tileAt=(x,y)=>S.map[y*MAPN+x];
+function lairArmy(l){const a=[{key:"gob",n:"Goblins",cls:"inf",atk:6,hp:30,c:4*l+2}];
+  if(l>=2)a.push({key:"orc",n:"Orcos jinetes",cls:"cav",atk:12,hp:50,c:2*(l-1)});
+  if(l>=3)a.push({key:"troll",n:"Trolls",cls:"tank",atk:14,hp:150,c:Math.floor(l/2)});
+  if(l>=4)a.push({key:"wyv",n:"Guivernos",cls:"fly",fly:true,atk:20,hp:70,c:l-3});
+  return a.map(g=>({...g,count:g.c}))}
+function kingdomArmy(l){const a=[{key:"inf",...UNITS.inf,count:5*l},{key:"arc",...UNITS.arc,count:3*l}];
+  if(l>=3)a.push({key:"cav",...UNITS.cav,count:2*(l-2)});
+  if(l>=5)a.push({key:"griffin",...UNITS.griffin,count:l-4});
+  if(l>=7)a.push({key:"golem",...UNITS.golem,count:l-6});
+  return a}
+
+// ---------- Combate (determinista dada la semilla) ----------
+function mult(a,t){
+  if(a.cls==="dragon")return t.cls==="tank"?1:1.3;
+  let m=1;
+  if(a.cls==="inf"&&t.cls==="cav")m=1.6;
+  if(a.cls==="arc"&&(t.cls==="inf"||t.fly))m=1.6;
+  if(a.cls==="cav"&&t.cls==="arc")m=1.6;
+  if(a.cls==="fly"&&t.cls==="arc")m=1.4;
+  if(a.cls==="beast"&&t.cls==="arc")m=1.3;
+  if(t.cls==="tank")m*=.7;
+  return m}
+function simulate(att,def,wall,tower,seed){
+  const r=rng(seed);
+  const mk=a=>a.filter(g=>g.count>0).map(g=>({...g,pool:g.count*g.hp,start:g.count}));
+  const A=mk(att),D=mk(def);let W=wall;const wall0=wall;
+  const alive=g=>Math.max(0,Math.ceil(g.pool/g.hp-1e-9));
+  const sum=a=>a.reduce((s,g)=>s+Math.max(0,g.pool),0);
+  const snap=()=>({A:A.map(g=>g.pool),D:D.map(g=>g.pool),W});
+  const rounds=[{...snap(),log:"Comienza la batalla."}];
+  for(let i=1;i<=8;i++){
+    if(sum(A)<=0||sum(D)<=0)break;
+    const dD=D.map(()=>0),dA=A.map(()=>0);let dW=0;const tD=sum(D),tA=sum(A);
+    for(const g of A){if(g.pool<=0)continue;const base=g.atk*alive(g)*(.9+r()*.2);
+      if(W>0&&!g.fly){dW+=base;continue}
+      D.forEach((t,j)=>{if(t.pool>0)dD[j]+=base*(t.pool/tD)*mult(g,t)})}
+    for(const g of D){if(g.pool<=0)continue;const base=g.atk*alive(g)*(.9+r()*.2);
+      A.forEach((t,j)=>{if(t.pool>0)dA[j]+=base*(t.pool/tA)*mult(g,t)})}
+    if(tower>0)A.forEach((t,j)=>{if(t.pool>0)dA[j]+=tower*(t.pool/tA)*(t.fly?1.3:1)});
+    D.forEach((g,j)=>g.pool-=dD[j]);A.forEach((g,j)=>g.pool-=dA[j]);
+    const wHit=Math.min(W,dW);W=Math.max(0,W-dW);
+    let log=`Ronda ${i}: infliges ${Math.round(dD.reduce((a,b)=>a+b,0)+wHit)} de daño, recibes ${Math.round(dA.reduce((a,b)=>a+b,0))}.`;
+    if(wall0>0&&W===0&&wHit>0)log+=" ¡La muralla cae!";
+    rounds.push({...snap(),log});
+  }
+  const lossA=A.map(g=>({key:g.key,lost:g.start-alive(g),left:alive(g)}));
+  const lossD=D.map(g=>({key:g.key,lost:g.start-alive(g),left:alive(g)}));
+  const win=sum(D)<=0&&sum(A)>0;
+  const startA=A.reduce((s,g)=>s+g.start*g.hp,0),leftA=sum(A);
+  const kept=startA?leftA/startA:0;
+  const stars=win?1+(kept>.5?1:0)+(kept>.8?1:0):0;
+  return{A,D,W,wall0,rounds,lossA,lossD,win,stars};
+}
+
+// ---------- Estado ----------
+let S;
+function newGame(){
+  const seed=Math.floor(Math.random()*1e9);
+  const b={};for(const k in BUILD)b[k]=BUILD[k].start;
+  const army={};for(const u in UNITS)army[u]=0;army.inf=8;army.arc=0;
+  return{v:1,seed,t:now(),res:{gold:400,wood:400,stone:300,food:400},b,upg:null,army,queue:[],qEnd:0,
+    dragon:null,map:genMap(seed),exped:[],xp:0,reports:[],unread:0,nextRaid:now()+240,shield:0,tab:"reino",sel:null,name:"Tu reino"};
+}
+function save(){try{localStorage.setItem("empire-save",JSON.stringify(S))}catch(e){}}
+function load(){try{const s=JSON.parse(localStorage.getItem("empire-save"));if(s&&s.v===1)return s}catch(e){}return null}
+
+// ---------- Simulación por tiempo ----------
+function advance(){
+  const t=now();let dt=clamp(t-S.t,0,8*3600);S.t=t;
+  const cp=cap();
+  for(const r of RES)if(S.res[r]<cp)S.res[r]=Math.min(cp,S.res[r]+rate(r)*dt);
+  for(const tl of S.map)if(tl.max&&tl.amt<tl.max)tl.amt=Math.min(tl.max,tl.amt+tl.max*.004*dt);
+  for(const tl of S.map)if(tl.k==="kingdom"&&tl.pool<300*tl.lvl)tl.pool=Math.min(300*tl.lvl,tl.pool+tl.lvl*.8*dt);
+  let changed=false;
+  if(S.upg&&t>=S.upg.end){const k=S.upg.k;S.b[k]++;S.upg=null;addXp(10*S.b[k]);toast(`${BUILD[k].n} sube a nivel ${S.b[k]}.`);changed=true}
+  while(S.queue.length&&t>=S.qEnd){const u=S.queue.shift();S.army[u]++;changed=true;
+    if(S.queue.length)S.qEnd+=trainTime(S.queue[0]);else S.qEnd=0}
+  if(S.dragon&&!S.dragon.hatched&&t>=S.dragon.hatchEnd){S.dragon.hatched=true;addXp(40);toast(`¡Tu huevo ha eclosionado! Ha nacido ${S.dragon.name}.`);changed=true}
+  for(const e of [...S.exped])if(t>=e.end){S.exped.splice(S.exped.indexOf(e),1);gain(e.loot);addXp(4);
+    toast(`Los recolectores vuelven con ${lootText(e.loot)}.`);changed=true}
+  if(t>=S.nextRaid){S.nextRaid=t+120+Math.random()*90;if(t>=S.shield)raid();changed=true}
+  return changed;
+}
+
+// ---------- Acciones ----------
+function upgrade(k){
+  const l=S.b[k],c=bCost(k,l);
+  if(S.upg||!afford(c))return;
+  if(k!=="castle"&&l>=S.b.castle)return toast("Primero sube el Castillo.",true);
+  if(k==="castle"&&l>=BUILD.castle.max)return;
+  pay(c);S.upg={k,end:now()+bTime(k,l),dur:bTime(k,l)};render();save();
+}
+function train(u,n){
+  const d=UNITS[u];let done=0;
+  for(let i=0;i<n;i++){if(!afford(d.cost))break;pay(d.cost);if(!S.queue.length)S.qEnd=now()+trainTime(u);S.queue.push(u);done++}
+  if(!done)toast("No tienes recursos suficientes.",true);
+  render();save();
+}
+function hatch(){const c={gold:150,food:150};if(!afford(c)||S.dragon)return;pay(c);
+  const names=["Ignis","Brasa","Escarcha","Tormenta","Ceniza","Obsidiana"];
+  S.dragon={name:names[Math.floor(Math.random()*names.length)],xp:0,hatched:false,hatchEnd:now()+25,wounded:0};render();save()}
+function feed(){const c={food:60};if(!afford(c)||!S.dragon||!S.dragon.hatched)return;
+  if(dLevel()>=dMax())return toast("Mejora el Nido para que el dragón siga creciendo.",true);
+  const st=dStage(dLevel());pay(c);S.dragon.xp+=30;addXp(2);
+  if(dStage(dLevel())>st)toast(`${S.dragon.name} evoluciona a ${STAGES[dStage(dLevel())]}.`);
+  render();save()}
+function explore(x,y){
+  const t=tileAt(x,y);if(t.seen)return;const c={food:10+3*dist(x,y)};
+  if(!afford(c))return toast("Te falta comida para pagar a los exploradores.",true);
+  pay(c);for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const tt=tileAt(x+dx,y+dy);if(tt)tt.seen=true}
+  addXp(5);render();save()}
+function gather(x,y){
+  const t=tileAt(x,y);if(S.exped.length>=maxExped())return toast("Todos tus recolectores están fuera.",true);
+  const carry=80+40*S.b.castle;const amt=Math.floor(Math.min(t.amt,carry));if(amt<10)return toast("Este yacimiento está casi agotado. Vuelve más tarde.",true);
+  t.amt-=amt;const dur=6+2*dist(x,y);
+  S.exped.push({x,y,start:now(),end:now()+dur,loot:{[T[t.k].r]:amt}});render();save()}
+function dig(x,y){
+  const t=tileAt(x,y);if(S.exped.length>=maxExped())return toast("Todos tus recolectores están fuera.",true);
+  const l=t.lvl,loot={gold:60*l,wood:40*l,stone:40*l};t.k="plain";initTile(t,dist(x,y));
+  S.exped.push({x,y,start:now(),end:now()+8+2*dist(x,y),loot});render();save()}
+const lootText=o=>Object.entries(o).filter(([,v])=>v>0).map(([r,v])=>`${Math.round(v)} de ${RNAME[r].toLowerCase()}`).join(", ")||"nada";
+function canReach(x,y){for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const t=tileAt(x+i,y+j);if(t&&t.seen&&(i||j))return true}return false}
+
+// Batalla del jugador
+function openAttack(x,y){
+  const t=tileAt(x,y);
+  const target=t.k==="lair"?{kind:"lair",name:`Guarida (nivel ${t.lvl})`,army:lairArmy(t.lvl),wall:0,tower:0}
+    :{kind:"kingdom",name:`${t.name} (castillo ${t.lvl})`,army:kingdomArmy(t.lvl),wall:Math.max(0,t.lvl-1)*220,tower:Math.max(0,t.lvl-2)*22};
+  const rows=Object.keys(UNITS).filter(u=>S.army[u]>0).map(u=>`<label for="pk-${u}">${UNITS[u].n} <span class="muted small">(${S.army[u]})</span></label><input type="number" id="pk-${u}" min="0" max="${S.army[u]}" value="${S.army[u]}">`).join("");
+  const dr=S.dragon&&S.dragon.hatched?(dReady()?`<label for="pk-dragon">${S.dragon.name}, ${STAGES[dStage(dLevel())].toLowerCase()}</label><input type="checkbox" id="pk-dragon" checked>`:`<span class="muted">${S.dragon.name} está herido</span><span></span>`):"";
+  const enemy=target.army.map(g=>`${g.count} ${g.n.toLowerCase()}`).join(", ")+(target.wall?`, muralla ${target.wall} PV`:"")+(target.tower?`, torres`:"");
+  modal(`<h2>Atacar ${esc(target.name)}</h2>
+    <p class="lead">Exploradores informan: ${enemy}.</p>
+    ${rows||dr?`<div class="pick">${rows}${dr}</div>`:`<p class="muted">No tienes tropas. Entrena algunas en la pestaña Ejército.</p>`}
+    <p class="desc">Ventajas: infantería gana a caballería, arqueros a infantería y voladores, caballería a arqueros. Los voladores ignoran la muralla.</p>
+    <div class="btns"><button class="btn primary" id="go" ${rows||dr?"":"disabled"}>Lanzar ataque</button><button class="btn" data-close>Cancelar</button></div>`);
+  document.getElementById("go").onclick=()=>{
+    const att=[];for(const u in UNITS){const el=document.getElementById("pk-"+u);if(!el)continue;const n=clamp(Math.floor(+el.value||0),0,S.army[u]);if(n>0)att.push({key:u,...UNITS[u],count:n})}
+    const dEl=document.getElementById("pk-dragon");if(dEl&&dEl.checked){const s=dStats();att.push({key:"dragon",n:S.dragon.name,cls:"dragon",fly:true,atk:s.atk,hp:s.hp,count:1})}
+    if(!att.length)return toast("Elige al menos una unidad.",true);
+    const res=simulate(att,target.army,target.wall,target.tower,Math.floor(Math.random()*1e9));
+    for(const l of res.lossA){if(l.key==="dragon"){if(l.left===0){S.dragon.wounded=now()+90}S.dragon.xp+=res.win?25*t.lvl:8;continue}S.army[l.key]-=l.lost}
+    let loot={};
+    if(res.win){
+      if(target.kind==="lair"){const L=t.lvl;loot={gold:60*L,food:50*L,wood:40*L};addXp(20*L);
+        t.k=["plain","forest","mountain"][Math.floor(Math.random()*3)];initTile(t,dist(x,y));respawnLair();}
+      else{const share=.12+.06*res.stars;const v=Math.round(t.pool*share);loot={gold:v,wood:v,stone:v,food:v};t.pool-=v;t.shield=now()+180;addXp(30*t.lvl)}
+      gain(loot);
+    }
+    addReport({type:"att",win:res.win,stars:res.stars,title:`Ataque a ${target.name}`,loot,lost:res.lossA.filter(l=>l.lost>0&&l.key!=="dragon")});
+    S.unread=Math.max(0,S.unread-1);
+    playBattle(res,att,target.army,`Ataque a ${target.name}`,loot);save();
+  };
+}
+function respawnLair(){for(let i=0;i<60;i++){const x=Math.floor(Math.random()*MAPN),y=Math.floor(Math.random()*MAPN),t=tileAt(x,y);
+  if(dist(x,y)>2&&["plain","forest","mountain"].includes(t.k)&&!t.seen){t.k="lair";initTile(t,dist(x,y));return}}}
+
+// Te atacan
+function raid(){
+  const ks=S.map.map((t,i)=>({t,i})).filter(o=>o.t.k==="kingdom");
+  const L=S.b.castle;const pick=ks.sort((a,b)=>Math.abs(a.t.lvl-L)-Math.abs(b.t.lvl-L))[Math.floor(Math.random()*2)]||ks[0];
+  const from=pick?pick.t.name:"Bandidos";
+  const att=[{key:"inf",...UNITS.inf,count:2+4*L},{key:"arc",...UNITS.arc,count:3*L-1}];
+  if(L>=3)att.push({key:"cav",...UNITS.cav,count:2*(L-2)});
+  if(L>=5)att.push({key:"griffin",...UNITS.griffin,count:L-4});
+  const def=[];for(const u in UNITS)if(S.army[u]>0)def.push({key:u,...UNITS[u],count:S.army[u]});
+  if(dReady()){const s=dStats();def.push({key:"dragon",n:S.dragon.name,cls:"dragon",fly:true,atk:s.atk,hp:s.hp,count:1})}
+  const wall=S.b.wall*250,tower=S.b.tower*25;
+  // el defensor es "D" en la simulación: invertimos papeles
+  const res=simulate(att,def,wall,tower,Math.floor(Math.random()*1e9));
+  for(const l of res.lossD){if(l.key==="dragon"){if(l.left===0)S.dragon.wounded=now()+90;S.dragon.xp+=10;continue}S.army[l.key]-=l.lost}
+  const lost={};
+  if(res.win){const p=prot();for(const r of RES){const v=Math.round(Math.max(0,S.res[r]-p)*.3);S.res[r]-=v;lost[r]=v}}
+  else addXp(15);
+  S.shield=now()+240;
+  addReport({type:"def",win:!res.win,stars:res.stars,title:`${from} atacó tu reino`,loot:lost,lost:res.lossD.filter(l=>l.lost>0&&l.key!=="dragon"),defense:true});
+  toast(res.win?`${from} ha saqueado tu reino. Revisa Informes.`:`Has rechazado el ataque de ${from}.`,res.win);
+}
+function addReport(r){r.at=Date.now();S.reports.unshift(r);S.reports=S.reports.slice(0,30);S.unread++}
+
+// ---------- Interfaz ----------
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=n=>{n=Math.floor(n);return n>=100000?Math.round(n/1000)+"k":n.toLocaleString("es-ES")};
+const mmss=s=>{s=Math.max(0,Math.ceil(s));const m=Math.floor(s/60);return m?`${m}:${String(s%60).padStart(2,"0")}`:`${s}s`};
+const DOT={gold:"d-gold",wood:"d-wood",stone:"d-stone",food:"d-food"};
+function costHtml(c){return`<div class="cost" data-cost='${JSON.stringify(c)}'>${Object.entries(c).map(([r,v])=>`<span data-r="${r}" data-v="${v}"><i class="dot ${DOT[r]}"></i><span class="num">${fmt(v)}</span></span>`).join("")}</div>`}
+function toast(msg,bad){const el=document.createElement("div");el.className="toast"+(bad?" bad":"");el.textContent=msg;$("toasts").appendChild(el);setTimeout(()=>el.remove(),4200)}
+function modal(html){$("modalRoot").innerHTML=`<div class="modal" role="dialog" aria-modal="true"><div class="box">${html}</div></div>`;
+  $("modalRoot").querySelectorAll("[data-close]").forEach(b=>b.onclick=closeModal)}
+function closeModal(){$("modalRoot").innerHTML="";render()}
+
+const TABS=[["reino","Reino"],["mapa","Mapa"],["ejercito","Ejército"],["informes","Informes"]];
+function renderTop(){
+  const cp=cap();
+  $("res").innerHTML=RES.map(r=>`<div class="chip" title="${RNAME[r]}"><i class="dot ${DOT[r]}"></i><span><b class="num" id="r-${r}">${fmt(S.res[r])}</b><span class="cap num"> / ${fmt(cp)}</span><br><span class="rate num">+${(rate(r)*60).toFixed(0)}/min</span></span></div>`).join("");
+  $("tabs").innerHTML=TABS.map(([k,n])=>`<button role="tab" aria-selected="${S.tab===k}" data-tab="${k}">${n}${k==="informes"&&S.unread?`<span class="badge">${S.unread}</span>`:""}</button>`).join("");
+  $("tabs").querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;if(S.tab==="informes")S.unread=0;render();save()});
+}
+function renderStatus(){
+  const pl=plevel(),cur=40*(pl-1)**2,nxt=40*pl**2,pct=(S.xp-cur)/(nxt-cur)*100,t=now();
+  const sh=S.shield>t?`<span class="pill shield">Escudo ${mmss(S.shield-t)}</span>`:(S.nextRaid-t<25?`<span class="pill warn">Ejército enemigo acercándose</span>`:"");
+  $("status").innerHTML=`<span><strong>${esc(S.name)}</strong></span><span>Castillo <strong class="num">${S.b.castle}</strong></span>
+    <span>Jugador nv <strong class="num">${pl}</strong> <span class="xpbar"><i style="width:${pct.toFixed(0)}%"></i></span></span>
+    <span>Poder <strong class="num">${fmt(power())}</strong></span>${sh}`;
+}
+function render(){renderTop();renderStatus();const v=$("view");
+  if(S.tab==="reino")v.innerHTML=viewKingdom();
+  else if(S.tab==="mapa")v.innerHTML=viewMap();
+  else if(S.tab==="ejercito")v.innerHTML=viewArmy();
+  else v.innerHTML=viewReports();
+  bind();tickUi();
+}
+function viewKingdom(){
+  const u=S.upg;
+  const cards=Object.keys(BUILD).map(k=>{const d=BUILD[k],l=S.b[k],locked=S.b.castle<d.unlock;
+    const c=bCost(k,l),busy=u&&u.k===k,capped=(k!=="castle"&&l>=S.b.castle)||(k==="castle"&&l>=d.max);
+    let info="";if(d.prod)info=`<span class="small muted">Produce <b class="num">${(d.rate*l*60).toFixed(0)}</b> ${RNAME[d.prod].toLowerCase()}/min</span>`;
+    if(k==="storage")info=`<span class="small muted">Protege <b class="num">${prot()}</b> de cada recurso</span>`;
+    if(k==="wall")info=l?`<span class="small muted">Resistencia <b class="num">${l*250}</b> PV</span>`:"";
+    if(k==="tower")info=l?`<span class="small muted">Daño <b class="num">${l*25}</b> por ronda</span>`:"";
+    let act;
+    if(locked)act=`<span class="small muted">Se desbloquea con Castillo ${d.unlock}</span>`;
+    else if(busy)act=`<div class="prog"><i data-start="${u.end-u.dur}" data-end="${u.end}"></i></div><span class="small muted">Construyendo… <span data-left="${u.end}" class="num"></span></span>`;
+    else if(capped)act=`<span class="small muted">${k==="castle"?"Nivel máximo del prototipo":"Sube el Castillo para mejorar más"}</span>`;
+    else act=`${costHtml(c)}<div class="btns"><button class="btn${l===0?" primary":""}" data-up="${k}" data-need='${JSON.stringify(c)}' ${u?"disabled data-busy":""}>${l===0?"Construir":"Mejorar"} · ${mmss(bTime(k,l))}</button></div>`;
+    return`<div class="card${locked?" locked":""}"><div class="row"><h3>${d.n}</h3><span class="lvl">${l?"nv "+l:"sin construir"}</span></div><p class="desc">${d.d}</p>${info}${act}</div>`}).join("");
+  return`<div style="display:flex;flex-direction:column;gap:12px"><h2>Tu reino</h2><p class="lead">Mejora los edificios para producir más y desbloquear tropas y criaturas. Tienes un solo constructor, así que elige bien qué mejorar primero.</p><div class="grid">${cards}</div></div>`;
+}
+function viewMap(){
+  return`<div style="display:flex;flex-direction:column;gap:12px"><h2>Mapa del mundo</h2>
+  <p class="lead">Toca una casilla. Explora la niebla, envía recolectores a los yacimientos y ataca guaridas o reinos rivales. Cuanto más lejos del centro, más riqueza y más peligro.</p>
+  <div class="mapwrap"><div class="mapbox"><canvas id="map" tabindex="0" aria-label="Mapa del mundo"></canvas>
+  <div class="legend">${["plain","forest","mountain","gold","lair","ruins","kingdom","water"].map(k=>`<span><i style="background:${T[k].c}"></i>${T[k].n}</span>`).join("")}</div></div>
+  <div class="side"><div class="card" id="tileInfo">${tileInfo()}</div>
+  <div class="card"><h3>Recolectores <span class="muted num small">${S.exped.length}/${maxExped()}</span></h3>${S.exped.length?S.exped.map(e=>`<div class="small">${T[tileAt(e.x,e.y).k]?.n||"Casilla"} (${e.x},${e.y}) <span class="muted num" data-left="${e.end}"></span></div><div class="prog"><i data-start="${e.start}" data-end="${e.end}"></i></div>`).join(""):`<span class="small muted">Ninguno fuera. Sube el Castillo para tener más grupos.</span>`}</div></div></div></div>`;
+}
+function tileInfo(){
+  if(!S.sel)return`<h3>Elige una casilla</h3><p class="desc">Tu reino está en el centro, marcado en dorado.</p>`;
+  const{x,y}=S.sel,t=tileAt(x,y),d=dist(x,y);
+  if(!t.seen){const reach=canReach(x,y);return`<h3>Territorio sin explorar</h3><p class="desc">Distancia ${d} desde tu reino.</p>${reach?`${costHtml({food:10+3*d})}<div class="btns"><button class="btn primary" data-explore>Enviar exploradores</button></div>`:`<span class="small muted">Explora primero una casilla vecina.</span>`}`}
+  const head=`<div class="row"><h3>${t.k==="kingdom"?esc(t.name):T[t.k].n}</h3><span class="lvl">(${x},${y})</span></div>`;
+  if(t.k==="home")return head+`<p class="desc">Tu capital. Las defensas se mejoran en la pestaña Reino.</p>`;
+  if(t.k==="water")return head+`<p class="desc">Agua tranquila. Aquí no hay nada que recoger.</p>`;
+  if(T[t.k].r)return head+`<p class="desc">Contiene <b class="num">${fmt(t.amt)}</b> / ${fmt(t.max)} de ${RNAME[T[t.k].r].toLowerCase()}. Se regenera con el tiempo.</p><p class="small muted">Cada grupo carga hasta ${80+40*S.b.castle}. Viaje: ${mmss(6+2*d)}.</p><div class="btns"><button class="btn primary" data-gather>Enviar recolectores</button></div>`;
+  if(t.k==="ruins")return head+`<p class="desc">Restos de un imperio antiguo. Excavar da oro, madera y piedra una sola vez.</p><div class="btns"><button class="btn primary" data-dig>Excavar</button></div>`;
+  if(t.k==="lair"){const a=lairArmy(t.lvl);return head+`<p class="desc">Nivel ${t.lvl}. Defensores: ${a.map(g=>`${g.count} ${g.n.toLowerCase()}`).join(", ")}.</p><p class="small muted">Botín: ${lootText({gold:60*t.lvl,food:50*t.lvl,wood:40*t.lvl})}.</p><div class="btns"><button class="btn danger" data-attack>Atacar</button></div>`}
+  if(t.k==="kingdom"){const sh=t.shield>now();return head+`<p class="desc">Reino rival, castillo nivel ${t.lvl}. Tesoro estimado: ${fmt(t.pool)} de cada recurso.</p>${sh?`<span class="pill shield">Escudo <span data-left="${t.shield}" class="num"></span></span>`:`<div class="btns"><button class="btn danger" data-attack>Atacar</button></div>`}`}
+  return head;
+}
+function viewArmy(){
+  const rows=Object.keys(UNITS).map(u=>{const d=UNITS[u],ok=S.b[d.b]>=d.bl;
+    return`<tr><td><b>${d.n}</b><br><span class="small muted">${d.tip}</span></td><td class="num">${d.atk}</td><td class="num">${d.hp}</td><td class="num"><b>${S.army[u]}</b></td>
+    <td>${ok?`${costHtml(d.cost)}<div class="btns" style="margin-top:4px"><button class="btn" data-train="${u}" data-n="1" data-need='${JSON.stringify(d.cost)}'>+1</button><button class="btn" data-train="${u}" data-n="5" data-need='${JSON.stringify(Object.fromEntries(Object.entries(d.cost).map(([r,v])=>[r,v*5])))}'>+5</button></div>`:`<span class="small muted">Requiere ${BUILD[d.b].n} nv ${d.bl}</span>`}</td></tr>`}).join("");
+  const q=S.queue.length?`<div class="small">Entrenando ${UNITS[S.queue[0]].n.toLowerCase()} <span class="muted num" data-left="${S.qEnd}"></span>${S.queue.length>1?` · ${S.queue.length-1} en cola`:""}</div><div class="prog"><i data-start="${S.qEnd-trainTime(S.queue[0])}" data-end="${S.qEnd}"></i></div>`:`<span class="small muted">Cola vacía.</span>`;
+  let dragon;
+  if(!S.b.nest)dragon=`<p class="desc">Construye el Nido de dragón (Castillo 2) para conseguir un huevo.</p>`;
+  else if(!S.dragon)dragon=`<p class="desc">Tu nido está listo. Un huevo tarda 25 segundos en eclosionar.</p>${costHtml({gold:150,food:150})}<div class="btns"><button class="btn primary" data-hatch data-need='{"gold":150,"food":150}'>Incubar huevo</button></div>`;
+  else if(!S.dragon.hatched)dragon=`<p class="desc">El huevo se mueve… <span class="num" data-left="${S.dragon.hatchEnd}"></span></p><div class="prog"><i data-start="${S.dragon.hatchEnd-25}" data-end="${S.dragon.hatchEnd}"></i></div>`;
+  else{const l=dLevel(),s=dStats(),st=dStage(l),nxt=30*l*l,cur=30*(l-1)**2,w=S.dragon.wounded>now();
+    dragon=`<div class="row"><h3>${S.dragon.name}</h3><span class="lvl">${STAGES[st]} · nv ${l}/${dMax()}</span></div>
+    <p class="desc">Ataque <b class="num">${s.atk}</b> · Vida <b class="num">${s.hp}</b>. Volador: ignora murallas y hace daño extra a casi todo.</p>
+    <div class="prog"><i style="width:${((S.dragon.xp-cur)/(nxt-cur)*100).toFixed(0)}%"></i></div>
+    ${w?`<span class="pill warn">Herido, se recupera en <span class="num" data-left="${S.dragon.wounded}"></span></span>`:""}
+    ${costHtml({food:60})}<div class="btns"><button class="btn primary" data-feed data-need='{"food":60}'>Alimentar (+30 xp)</button></div>
+    <p class="small muted">Etapas: Cría (1), Joven (4), Adulto (7), Anciano (11). El Nido limita el nivel máximo.</p>`}
+  return`<div style="display:flex;flex-direction:column;gap:12px"><h2>Ejército y criaturas</h2>
+  <p class="lead">Entrena tropas para atacar y para defender tu reino. Las tropas que tienes en casa defienden automáticamente cuando te atacan.</p>
+  <div class="mapwrap"><div class="card" style="flex:2 1 460px"><div class="tablewrap"><table class="units"><thead><tr><th>Unidad</th><th>Atq</th><th>Vida</th><th>Tienes</th><th>Entrenar</th></tr></thead><tbody>${rows}</tbody></table></div>${q}</div>
+  <div class="card" style="flex:1 1 260px"><h3>Dragón</h3><div class="dragon"><canvas id="dragonCanvas" width="360" height="280"></canvas></div>${dragon}</div></div></div>`;
+}
+function viewReports(){
+  if(!S.reports.length)return`<div class="card"><h2>Informes</h2><p class="desc">Aquí verás tus ataques y quién ha atacado tu reino. El primer ataque enemigo llega a los pocos minutos de empezar.</p></div>`;
+  return`<div style="display:flex;flex-direction:column;gap:10px"><h2>Informes</h2>${S.reports.map(r=>{
+    const lostTxt=r.lost.length?r.lost.map(l=>`${l.lost} ${(UNITS[l.key]?.n||l.key).toLowerCase()}`).join(", "):"ninguna";
+    const lootLine=r.defense?(r.win?"No se llevaron nada.":`Te robaron ${lootText(r.loot)}.`):(r.win?`Botín: ${lootText(r.loot)}.`:"Sin botín.");
+    return`<div class="report ${r.win?"win":"loss"}"><div class="row"><b>${esc(r.title)}</b><span class="when">${new Date(r.at).toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}</span></div>
+    <div class="small">${r.defense?(r.win?"Defensa con éxito":"Defensa fallida"):(r.win?"Victoria "+"★".repeat(r.stars)+"☆".repeat(3-r.stars):"Derrota")}. Bajas propias: ${lostTxt}. ${lootLine}</div></div>`}).join("")}</div>`;
+}
+function bind(){
+  const v=$("view");
+  v.querySelectorAll("[data-up]").forEach(b=>b.onclick=()=>upgrade(b.dataset.up));
+  v.querySelectorAll("[data-train]").forEach(b=>b.onclick=()=>train(b.dataset.train,+b.dataset.n));
+  const q=s=>v.querySelector(s);
+  q("[data-hatch]")&&(q("[data-hatch]").onclick=hatch);
+  q("[data-feed]")&&(q("[data-feed]").onclick=feed);
+  if(S.sel){const{x,y}=S.sel;
+    q("[data-explore]")&&(q("[data-explore]").onclick=()=>explore(x,y));
+    q("[data-gather]")&&(q("[data-gather]").onclick=()=>gather(x,y));
+    q("[data-dig]")&&(q("[data-dig]").onclick=()=>dig(x,y));
+    q("[data-attack]")&&(q("[data-attack]").onclick=()=>openAttack(x,y));}
+  const cv=$("map");if(cv){sizeMap();cv.onclick=e=>{const r=cv.getBoundingClientRect(),ts=r.width/MAPN;
+    const x=Math.floor((e.clientX-r.left)/ts),y=Math.floor((e.clientY-r.top)/ts);if(tileAt(x,y)){S.sel={x,y};$("tileInfo").innerHTML=tileInfo();bind();drawMap()}};}
+  drawDragon();
+}
+function tickUi(){
+  const t=now();
+  for(const r of RES){const el=$("r-"+r);if(el)el.textContent=fmt(S.res[r])}
+  document.querySelectorAll("[data-end]").forEach(el=>{const s=+el.dataset.start,e=+el.dataset.end;el.style.width=clamp((t-s)/(e-s)*100,0,100)+"%"});
+  document.querySelectorAll("[data-left]").forEach(el=>el.textContent=mmss(+el.dataset.left-t));
+  document.querySelectorAll("[data-need]").forEach(b=>{if(b.hasAttribute("data-busy"))return;b.disabled=!afford(JSON.parse(b.dataset.need))});
+  document.querySelectorAll(".cost span[data-r]").forEach(s=>s.classList.toggle("short",S.res[s.dataset.r]<+s.dataset.v));
+  renderStatus();if($("map"))drawMap();
+}
+
+// ---------- Dibujo ----------
+function sizeMap(){const cv=$("map");const w=cv.parentElement.clientWidth-16;const ts=Math.max(12,Math.floor(Math.min(w,672)/MAPN));
+  const dpr=window.devicePixelRatio||1;cv.width=ts*MAPN*dpr;cv.height=ts*MAPN*dpr;cv.style.width=ts*MAPN+"px";cv.dataset.ts=ts;}
+function drawMap(){
+  const cv=$("map");if(!cv)return;const g=cv.getContext("2d"),dpr=window.devicePixelRatio||1,ts=+cv.dataset.ts;
+  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,ts*MAPN,ts*MAPN);
+  for(let y=0;y<MAPN;y++)for(let x=0;x<MAPN;x++){const t=tileAt(x,y),px=x*ts,py=y*ts;
+    if(!t.seen){g.fillStyle=(x+y)%2?"#0c120f":"#0e1512";g.fillRect(px,py,ts,ts);
+      if(canReach(x,y)){g.fillStyle="rgba(214,166,76,.12)";g.fillRect(px,py,ts,ts)}continue}
+    const base=t.k==="lair"||t.k==="ruins"||t.k==="kingdom"?"#4c6638":T[t.k].c;g.fillStyle=base;g.fillRect(px,py,ts,ts);
+    drawGlyph(g,t,px,py,ts);
+    if(t.max){const f=t.amt/t.max;g.fillStyle="rgba(0,0,0,.45)";g.fillRect(px+2,py+ts-4,ts-4,2);g.fillStyle="#ebe5d4";g.fillRect(px+2,py+ts-4,(ts-4)*f,2)}
+  }
+  g.strokeStyle="rgba(0,0,0,.18)";g.lineWidth=1;
+  for(let i=0;i<=MAPN;i++){g.beginPath();g.moveTo(i*ts+.5,0);g.lineTo(i*ts+.5,ts*MAPN);g.stroke();g.beginPath();g.moveTo(0,i*ts+.5);g.lineTo(ts*MAPN,i*ts+.5);g.stroke()}
+  const t0=now();
+  for(const e of S.exped){const f=clamp((t0-e.start)/(e.end-e.start),0,1),k=f<.5?f*2:2-f*2;
+    const px=(C+(e.x-C)*k+.5)*ts,py=(C+(e.y-C)*k+.5)*ts;g.fillStyle="#ebe5d4";g.beginPath();g.arc(px,py,Math.max(2,ts*.15),0,7);g.fill();g.strokeStyle="#111915";g.stroke()}
+  if(S.sel){g.strokeStyle="#d6a64c";g.lineWidth=2;g.strokeRect(S.sel.x*ts+1,S.sel.y*ts+1,ts-2,ts-2)}
+}
+function drawGlyph(g,t,px,py,s){
+  const cx=px+s/2,cy=py+s/2;
+  if(t.k==="forest"){g.fillStyle="#1a3a22";for(const[ox,oy]of[[-.18,.05],[.16,-.08]]){g.beginPath();g.moveTo(cx+ox*s,cy+oy*s-s*.28);g.lineTo(cx+ox*s-s*.17,cy+oy*s+s*.2);g.lineTo(cx+ox*s+s*.17,cy+oy*s+s*.2);g.fill()}}
+  else if(t.k==="mountain"){g.fillStyle="#4d4a43";g.beginPath();g.moveTo(cx,cy-s*.32);g.lineTo(cx-s*.34,cy+s*.26);g.lineTo(cx+s*.34,cy+s*.26);g.fill();
+    g.fillStyle="#d9d6cc";g.beginPath();g.moveTo(cx,cy-s*.32);g.lineTo(cx-s*.1,cy-s*.12);g.lineTo(cx+s*.1,cy-s*.12);g.fill()}
+  else if(t.k==="gold"){g.fillStyle="#f0c85a";g.beginPath();g.arc(cx,cy,s*.2,0,7);g.fill();g.fillStyle="#8c7330";g.fillRect(cx-s*.04,cy-s*.12,s*.08,s*.24)}
+  else if(t.k==="plain"){g.fillStyle="#7d9a52";for(let i=0;i<3;i++)g.fillRect(px+s*(.22+i*.24),py+s*.4,Math.max(1,s*.06),s*.2)}
+  else if(t.k==="water"){g.strokeStyle="#5c86a8";g.lineWidth=1;g.beginPath();g.moveTo(px+s*.2,cy);g.quadraticCurveTo(cx-s*.1,cy-s*.15,cx,cy);g.quadraticCurveTo(cx+s*.1,cy+s*.15,px+s*.8,cy);g.stroke()}
+  else if(t.k==="lair"){g.fillStyle="#7a2b25";g.beginPath();g.arc(cx,cy,s*.34,0,7);g.fill();g.fillStyle="#f1d9c8";g.font=`600 ${Math.round(s*.42)}px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";g.fillText(t.lvl,cx,cy+1)}
+  else if(t.k==="ruins"){g.fillStyle="#b5ab92";g.fillRect(cx-s*.25,cy-s*.15,s*.12,s*.38);g.fillRect(cx+s*.1,cy-s*.02,s*.12,s*.25);g.fillRect(cx-s*.3,cy+s*.22,s*.6,s*.06)}
+  else if(t.k==="kingdom"||t.k==="home"){const col=t.k==="home"?"#d6a64c":"#9b7fd0";g.fillStyle=col;
+    g.fillRect(cx-s*.32,cy-s*.05,s*.64,s*.35);g.fillRect(cx-s*.32,cy-s*.22,s*.14,s*.2);g.fillRect(cx+s*.18,cy-s*.22,s*.14,s*.2);g.fillRect(cx-s*.08,cy-s*.36,s*.16,s*.35);
+    if(t.k==="kingdom"){g.fillStyle="#1b1230";g.font=`600 ${Math.round(s*.34)}px "IBM Plex Mono",monospace`;g.textAlign="center";g.textBaseline="middle";g.fillText(t.lvl,cx,cy+s*.13)}
+    if(t.shield>now()){g.strokeStyle="#7fb3d6";g.lineWidth=1.5;g.beginPath();g.arc(cx,cy,s*.46,0,7);g.stroke()}}
+}
+function drawDragon(){
+  const cv=$("dragonCanvas");if(!cv)return;const g=cv.getContext("2d");g.clearRect(0,0,360,280);
+  if(!S.dragon){g.fillStyle="#30423a";g.font="22px 'Alegreya Sans',sans-serif";g.textAlign="center";g.fillText(S.b.nest?"Nido vacío":"Sin nido",180,145);return}
+  if(!S.dragon.hatched){g.fillStyle="#7a3b2a";g.beginPath();g.ellipse(180,150,48,64,0,0,7);g.fill();g.fillStyle="#e2653c";for(const[x,y]of[[165,120],[195,150],[172,180]]){g.beginPath();g.arc(x,y,7,0,7);g.fill()}return}
+  const st=dStage(dLevel()),sc=.55+st*.17;
+  g.save();g.translate(180,160);g.scale(sc,sc);
+  g.fillStyle="#a33d22";
+  g.beginPath();g.moveTo(-10,-20);g.lineTo(-150,-110);g.lineTo(-120,-40);g.lineTo(-150,-30);g.lineTo(-90,0);g.closePath();g.fill();
+  g.beginPath();g.moveTo(10,-20);g.lineTo(130,-120);g.lineTo(110,-50);g.lineTo(140,-40);g.lineTo(80,0);g.closePath();g.fill();
+  g.fillStyle="#e2653c";g.beginPath();g.ellipse(0,10,60,36,0,0,7);g.fill();
+  g.beginPath();g.moveTo(-50,20);g.quadraticCurveTo(-120,60,-150,30);g.lineTo(-140,45);g.quadraticCurveTo(-110,75,-45,35);g.fill();
+  g.beginPath();g.moveTo(40,-5);g.quadraticCurveTo(70,-60,95,-55);g.lineTo(115,-45);g.lineTo(95,-35);g.quadraticCurveTo(80,-25,55,15);g.fill();
+  g.fillStyle="#ffd77a";g.beginPath();g.arc(100,-48,4,0,7);g.fill();
+  g.fillStyle="#f3b07a";g.beginPath();g.ellipse(5,22,40,14,0,0,7);g.fill();
+  if(st>=2){g.fillStyle="#d6a64c";g.beginPath();g.moveTo(90,-58);g.lineTo(84,-80);g.lineTo(98,-60);g.fill()}
+  if(st>=3){g.strokeStyle="#ffd77a";g.lineWidth=3;g.beginPath();g.arc(0,0,95,3.6,5.8);g.stroke()}
+  g.restore();
+}
+
+// Reproducción de batalla
+function playBattle(res,att,def,title,loot,isDefense){
+  const grp=(arr,pools,cls)=>arr.filter(g=>g.count>0).map((g,i)=>`<div class="grp ${cls}"><span>${esc(g.n)}</span><span class="num" id="${cls}c${i}">${g.count}</span><div class="prog"><i id="${cls}b${i}" style="width:100%"></i></div></div>`).join("");
+  modal(`<h2>${esc(title)}</h2><div class="sides"><div><h3>Tus fuerzas</h3>${grp(att,null,"att")}</div><div><h3>Enemigo</h3>${grp(def,null,"def")}${res.wall0?`<div class="grp def"><span>Muralla</span><span class="num" id="wallc">${res.wall0}</span><div class="prog"><i id="wallb" style="width:100%"></i></div></div>`:""}</div></div>
+  <div class="log" id="blog"></div><div id="bend"></div>`);
+  const A=att.filter(g=>g.count>0),D=def.filter(g=>g.count>0);let i=0;
+  const step=()=>{const r=res.rounds[i];
+    r.A.forEach((p,j)=>{const g=A[j];$("attc"+j).textContent=Math.max(0,Math.ceil(p/g.hp-1e-9));$("attb"+j).style.width=clamp(p/(g.count*g.hp)*100,0,100)+"%"});
+    r.D.forEach((p,j)=>{const g=D[j];$("defc"+j).textContent=Math.max(0,Math.ceil(p/g.hp-1e-9));$("defb"+j).style.width=clamp(p/(g.count*g.hp)*100,0,100)+"%"});
+    if(res.wall0){$("wallc").textContent=Math.round(r.W);$("wallb").style.width=r.W/res.wall0*100+"%"}
+    const lg=$("blog");lg.textContent+=r.log+"\n";lg.scrollTop=1e6;i++;
+    if(i<res.rounds.length)setTimeout(step,matchMedia("(prefers-reduced-motion:reduce)").matches?60:650);
+    else $("bend").innerHTML=`<div class="stars">${"★".repeat(res.stars)}${"☆".repeat(3-res.stars)}</div><p><b>${res.win?"¡Victoria!":"Derrota."}</b> ${res.win?"Botín: "+lootText(loot)+".":"Tus supervivientes vuelven a casa."}</p><div class="btns"><button class="btn primary" data-close>Volver</button></div>`,
+      $("bend").querySelector("[data-close]").onclick=closeModal;};
+  step();
+}
+
+// ---------- Arranque ----------
+function start(data){
+  S=(data&&data.S)||load()||newGame();
+  advance();render();save();
+  window.claude?.hot?.snapshot?.(()=>({S}));
+  let last=0;
+  setInterval(()=>{if(advance())render();else tickUi();if(++last%5===0)save()},250);
+  window.addEventListener("resize",()=>{if($("map")){sizeMap();drawMap()}});
+  const askReset=()=>{$("resetZone").innerHTML=`<span>¿Borrar la partida?</span> <button class="btn danger small" id="yesReset">Sí, borrar</button> <button class="btn small" id="noReset">No</button>`;
+    const restore=()=>{$("resetZone").innerHTML=`<button class="btn danger small" id="resetBtn">Empezar de nuevo</button>`;$("resetBtn").onclick=askReset};
+    $("yesReset").onclick=()=>{S=newGame();save();restore();render()};$("noReset").onclick=restore};
+  $("resetBtn").onclick=askReset;
+}
+window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
+</script>
