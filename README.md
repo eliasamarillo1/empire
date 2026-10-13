@@ -40,6 +40,10 @@ Las contraseñas se guardan con scrypt y sal. La sesión es un token aleatorio q
 
 Para apuntar el juego a un servidor en otra dirección (por ejemplo en la app móvil), compílalo con `VITE_API_URL=https://tu-servidor npm run build`.
 
+## Mapas hechos con Tiled
+
+El mapa del mundo se puede diseñar con [Tiled](https://www.mapeditor.org). El de ejemplo está en `apps/client/public/maps/mundo.tmj` y es el que usan las partidas nuevas, con y sin conexión. La guía [docs/mapas-tiled.md](docs/mapas-tiled.md) explica cómo marcar el terreno, las guaridas y los reinos. La variable `MAP_FILE` del servidor elige otro mapa; si la dejas vacía, vuelve el mapa generado al azar.
+
 ## Estado
 
 - Hecho: reino, mapa, ejército, dragón, batallas, cuentas, guardado en el servidor y PvP asíncrono.

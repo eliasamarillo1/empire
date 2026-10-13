@@ -1,6 +1,8 @@
 import Phaser from "phaser";
-import { canExplore, center, tileAt, type Tile, type TileKind } from "@empire/core";
+import { canExplore, homeOf, tileAt, type Tile, type TileKind } from "@empire/core";
 import { game, now } from "../game";
+import { loadMap } from "../maps";
+import { TiledArt } from "./tiledArt";
 import { cameraControls, fit } from "./camera";
 import { TH, TW, drawBlock, fillDiamond, fromIso, iso, strokeDiamond } from "./iso";
 
@@ -11,6 +13,8 @@ export const TILE_COLORS: Record<TileKind, number> = {
 
 export class WorldScene extends Phaser.Scene {
   private layer!: Phaser.GameObjects.Container;
+  /** Imágenes del mapa de Tiled, si el mundo viene de uno. */
+  private art?: TiledArt;
   private markers!: Phaser.GameObjects.Graphics;
   private unsubscribe?: () => void;
 
@@ -20,16 +24,32 @@ export class WorldScene extends Phaser.Scene {
 
   create() {
     this.cameras.main.setBackgroundColor("#0b100e");
+    const artLayer = this.add.container(0, 0);
     this.layer = this.add.container(0, 0);
     this.markers = this.add.graphics().setDepth(1000);
     const w = game.world;
     // Empieza centrado en tu reino, con zoom para ver lo explorado
-    const c = iso(center(w) + 0.5, center(w) + 0.5);
+    const h = homeOf(w);
+    const c = iso(h.x + 0.5, h.y + 0.5);
     fit(this, c.x, c.y, TW * 9, TH * 11);
     cameraControls(this, (x, y) => this.tap(x, y));
     this.unsubscribe = game.onChange(() => this.draw());
-    this.events.once("shutdown", () => this.unsubscribe?.());
+    this.events.once("shutdown", () => {
+      this.unsubscribe?.();
+      this.art = undefined;
+    });
     this.draw();
+    if (w.map) {
+      const name = w.map;
+      loadMap(name)
+        .then((m) => TiledArt.create(this, artLayer, m))
+        .then((art) => {
+          if (!this.sys.isActive() || game.world.map !== name) return art.destroy();
+          this.art = art;
+          this.draw();
+        })
+        .catch((e) => console.warn(`No se pudieron cargar las imágenes del mapa «${name}»; se dibuja sin ellas.`, e));
+    }
   }
 
   private tap(wx: number, wy: number) {
@@ -46,20 +66,24 @@ export class WorldScene extends Phaser.Scene {
     const labels: Phaser.GameObjects.GameObject[] = [];
     this.layer.add([g, deco]);
     const t0 = now();
+    const tiled = this.art && this.art.name === w.map ? this.art : undefined;
 
     for (let s = 0; s < w.size * 2; s++)
       for (let y = 0; y < w.size; y++) {
         const x = s - y;
         const t = tileAt(w, x, y);
         if (!t) continue;
+        const art = tiled?.show(x, y, t);
         if (!t.seen) {
           fillDiamond(g, x, y, (x + y) % 2 ? 0x0e1512 : 0x111a16);
           if (canExplore(w, x, y)) fillDiamond(g, x, y, 0xd6a64c, 0.1);
           continue;
         }
-        fillDiamond(g, x, y, TILE_COLORS[t.kind]);
-        strokeDiamond(g, x, y, 0x000000, 1, 0.12);
-        const label = this.decorate(deco, t, x, y, t0);
+        if (!art?.ground) {
+          fillDiamond(g, x, y, TILE_COLORS[t.kind]);
+          strokeDiamond(g, x, y, 0x000000, 1, 0.12);
+        }
+        const label = this.decorate(deco, t, x, y, t0, art?.ground ?? false, art?.place ?? false);
         if (label) labels.push(label);
       }
     this.layer.add(labels);
@@ -72,13 +96,17 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  /** Dibuja el elemento de la casilla. Devuelve una etiqueta de nivel si la lleva. */
-  private decorate(g: Phaser.GameObjects.Graphics, t: Tile, x: number, y: number, t0: number) {
+  /**
+   * Dibuja el elemento de la casilla. Devuelve una etiqueta de nivel si la lleva.
+   * Si el mapa de Tiled ya pinta el terreno (`ground`) o el lugar (`place`), solo añade lo que falta.
+   */
+  private decorate(g: Phaser.GameObjects.Graphics, t: Tile, x: number, y: number, t0: number, ground = false, place = false) {
     const c = iso(x + 0.5, y + 0.5);
     const tri = (cx: number, cy: number, w: number, h: number, color: number) => {
       g.fillStyle(color, 1).fillTriangle(cx - w / 2, cy, cx + w / 2, cy, cx, cy - h);
     };
-    switch (t.kind) {
+    const terrain = t.kind === "plain" || t.kind === "forest" || t.kind === "mountain" || t.kind === "gold" || t.kind === "water";
+    switch (ground && terrain ? null : t.kind) {
       case "forest":
         tri(c.x - 9, c.y + 2, 14, 20, 0x1a3a22);
         tri(c.x + 8, c.y - 2, 14, 22, 0x204828);
@@ -100,16 +128,19 @@ export class WorldScene extends Phaser.Scene {
         g.lineStyle(1.5, 0x5c86a8, 1).lineBetween(c.x - 12, c.y, c.x + 12, c.y);
         break;
       case "ruins":
+        if (place) break;
         g.fillStyle(0xb5ab92, 1).fillRect(c.x - 10, c.y - 14, 5, 16).fillRect(c.x + 4, c.y - 8, 5, 10).fillRect(c.x - 12, c.y + 2, 24, 3);
         break;
       case "lair":
-        g.fillStyle(0x2a1210, 1).fillEllipse(c.x, c.y + 2, 30, 16);
-        g.fillStyle(0x7a2b25, 1).fillEllipse(c.x, c.y, 22, 11);
+        if (!place) {
+          g.fillStyle(0x2a1210, 1).fillEllipse(c.x, c.y + 2, 30, 16);
+          g.fillStyle(0x7a2b25, 1).fillEllipse(c.x, c.y, 22, 11);
+        }
         return this.badge(c.x, c.y - 16, String(t.level), 0x7a2b25);
       case "kingdom":
       case "home": {
         const home = t.kind === "home";
-        drawBlock(g, x, y, 1, 1, 14, home ? 0xd6a64c : 0x9b7fd0, home ? 0x7b3b34 : 0x4b3a6b, 12, 0.18);
+        if (!place) drawBlock(g, x, y, 1, 1, 14, home ? 0xd6a64c : 0x9b7fd0, home ? 0x7b3b34 : 0x4b3a6b, 12, 0.18);
         if (!home && (t.shieldUntil ?? 0) > t0) g.lineStyle(2, 0x7fb3d6, 0.9).strokeEllipse(c.x, c.y - 8, 54, 34);
         return home ? null : this.badge(c.x, c.y - 34, String(t.level), 0x4b3a6b);
       }
@@ -134,13 +165,12 @@ export class WorldScene extends Phaser.Scene {
     // Recolectores yendo y volviendo desde tu reino
     const g = this.markers;
     g.clear();
-    const w = game.world;
-    const c = center(w);
+    const h = homeOf(game.world);
     const t0 = now();
     for (const e of game.player.expeditions) {
       const f = Phaser.Math.Clamp((t0 - e.start) / (e.end - e.start), 0, 1);
       const k = f < 0.5 ? f * 2 : 2 - f * 2;
-      const p = iso(c + 0.5 + (e.x - c) * k, c + 0.5 + (e.y - c) * k);
+      const p = iso(h.x + 0.5 + (e.x - h.x) * k, h.y + 0.5 + (e.y - h.y) * k);
       g.fillStyle(0xebe5d4, 1).fillCircle(p.x, p.y - 4, 4);
       g.lineStyle(1, 0x111915, 1).strokeCircle(p.x, p.y - 4, 4);
     }

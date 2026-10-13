@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createKingdom, defenses, garrison, ordersToGroups, simulate } from "@empire/core";
 import { buildApp } from "../src/app";
+import { DEFAULT_MAP_FILE, loadTiledWorld, mapFromEnv } from "../src/maps";
 import { Store } from "../src/store";
 
 function setup(store = new Store()) {
@@ -119,5 +120,25 @@ describe("PvP", () => {
     const d = await register(app, "defensor");
     expect((await post(app, "/api/me/attack-player", { defenderId: d.player.id, orders: { units: { inf: 500 } } }, a.token)).statusCode).toBe(400);
     expect((await post(app, "/api/me/attack-player", { defenderId: a.player.id, orders: { units: { inf: 1 } } }, a.token)).statusCode).toBe(400);
+  });
+});
+
+describe("mapas de Tiled", () => {
+  it("las partidas nuevas usan el mapa de ejemplo y el cliente sabe cuál dibujar", async () => {
+    const world = loadTiledWorld(DEFAULT_MAP_FILE);
+    const app = buildApp({ store: new Store(), clock: () => 1000, seed: () => 1234, world });
+    const { player } = await register(app, "elias");
+    expect(player.world.map).toBe("mundo");
+    expect(player.world.size).toBe(world.size);
+    expect(player.world.home).toEqual(world.home);
+    // Lo que no has explorado sigue oculto aunque el mapa venga de Tiled
+    const hidden = player.world.tiles.filter((t: { seen: boolean }) => !t.seen);
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(hidden.every((t: { kind: string }) => t.kind === "plain")).toBe(true);
+  });
+
+  it("MAP_FILE vacío vuelve al mapa generado", () => {
+    expect(mapFromEnv("")).toBeUndefined();
+    expect(mapFromEnv(undefined)?.map).toBe("mundo");
   });
 });
