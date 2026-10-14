@@ -10,6 +10,12 @@
 al de Social Empires ni a ninguno." Antes había pedido que el juego tuviera "un diseño como el de
 Los Sims, con esa calidad de imagen".
 
+## Aclaraciones
+
+### Sesión 2026-10-14
+
+- P: ¿Cámara cenital como Social Empires o la orbital inclinada? → R: la orbital inclinada actual.
+
 ## Escenarios de uso y pruebas *(obligatorio)*
 
 ### Historia 1: Ver el mundo como un paisaje (Prioridad: P1)
@@ -147,5 +153,4 @@ completo.
   la calidad final llegará al sustituir los modelos provisionales por un pack profesional.
 - Las reglas de exploración, recursos y combate no cambian.
 - El mapa sigue siendo una cuadrícula en las reglas; solo el dibujo deja de mostrarla.
-- [NEEDS CLARIFICATION: ¿Elias prefiere una cámara más alta y cenital, como el mapa de Social
-  Empires, o la cámara orbital inclinada actual? Por defecto se mantiene la orbital.]
+- La cámara del mapa es la orbital inclinada actual (decisión de Elias, 2026-10-14: "Mantenla así").
