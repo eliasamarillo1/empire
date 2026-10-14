@@ -30,5 +30,5 @@
 
 ## Fase 6: Pulido
 
-- [ ] T012 Capturas antes y después en 1280 × 800, 390 × 844 y 320 × 640; sin desbordamiento
-- [ ] T013 Subir al PR #4 y actualizar la vista previa
+- [X] T012 Capturas antes y después en 1280 × 800, 390 × 844 y 320 × 640; sin desbordamiento
+- [X] T013 Subir al PR #4 y actualizar la vista previa
