@@ -6,6 +6,7 @@ import {
   type Bag, type BuildingKey, type Resource, type UnitKey,
 } from "@empire/core";
 import { game, lootText, now, type Battle, type Tab } from "./game";
+import { ICONS, type IconName } from "./icons";
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -18,9 +19,20 @@ const mmss = (s: number) => {
 
 function cost(bag: Bag) {
   return `<div class="cost">${(Object.entries(bag) as [Resource, number][])
-    .map(([r, v]) => `<span data-r="${r}" data-v="${v}"><i class="dot d-${r}"></i><span class="num">${fmt(v)}</span></span>`)
+    .map(([r, v]) => `<span data-r="${r}" data-v="${v}" title="${RESOURCE_NAMES[r]}">${ICONS[r]}<span class="num">${fmt(v)}</span></span>`)
     .join("")}</div>`;
 }
+/** Línea que se rellena sola con lo que falta para pagar `bag` (vacía si alcanza). */
+const missing = (bag: Bag) => `<p class="missing small" data-missing='${JSON.stringify(bag)}'></p>`;
+
+const BUILDING_ICONS: Record<BuildingKey, IconName> = {
+  castle: "castle", house: "gold", farm: "food", sawmill: "wood", quarry: "stone", storage: "cart",
+  barracks: "swords", stable: "swords", den: "swords", wall: "shield", tower: "castle", nest: "dragon",
+};
+const TILE_ICONS: Partial<Record<string, IconName>> = {
+  forest: "wood", mountain: "stone", gold: "gold", plain: "food", lair: "swords", kingdom: "castle", home: "castle", ruins: "scroll", water: "map",
+};
+const TAB_ICONS: Record<Tab, IconName> = { reino: "castle", mapa: "map", ejercito: "swords", informes: "scroll" };
 const need = (bag: Bag) => `data-need='${JSON.stringify(bag)}'`;
 const bar = (start: number, end: number) => `<div class="prog"><i data-start="${start}" data-end="${end}"></i></div>`;
 
@@ -58,15 +70,24 @@ export function mountUi(hooks: UiHooks) {
     el.innerHTML = `<form class="box login" id="loginForm" novalidate>
       <div class="brand big">Empire</div>
       <p class="lead">Construye tu reino, cría a tu dragón y ataca a otros jugadores.</p>
+      <button class="btn primary wide big-btn" type="button" id="lLocal">${ICONS.castle}Jugar</button>
+      <p class="small muted">La partida se guarda en este dispositivo y los rivales los controla la máquina.</p>
+      <button class="btn link" type="button" id="lShowAccount" aria-expanded="false">Entrar con cuenta</button>
+      <div id="accountBox" hidden>
       <div class="seg" role="tablist"><button type="button" class="on" data-mode="login" aria-selected="true">Entrar</button><button type="button" data-mode="register" aria-selected="false">Crear cuenta</button></div>
       <label for="lUser">Usuario</label><input id="lUser" autocomplete="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+">
       <label for="lPass">Contraseña</label><input id="lPass" type="password" autocomplete="current-password" required minlength="8">
       <div id="lKingdomRow" hidden><label for="lKingdom">Nombre de tu reino</label><input id="lKingdom" maxlength="30" placeholder="Reino de …"></div>
       <p class="error" id="lError" role="alert"></p>
-      <button class="btn primary" id="lSubmit" type="submit">Entrar</button>
-      <button class="btn" type="button" id="lLocal">Jugar sin conexión</button>
-      <p class="small muted">Sin conexión la partida se guarda solo en este dispositivo y los rivales los controla la máquina.</p>
+      <button class="btn" id="lSubmit" type="submit">Entrar</button>
+      </div>
     </form>`;
+    $("lShowAccount").onclick = () => {
+      const box = $("accountBox");
+      box.hidden = !box.hidden;
+      $("lShowAccount").setAttribute("aria-expanded", String(!box.hidden));
+      if (!box.hidden) ($("lUser") as HTMLInputElement).focus();
+    };
     let register = false;
     el.querySelectorAll<HTMLButtonElement>("[data-mode]").forEach((b) => (b.onclick = () => {
       register = b.dataset.mode === "register";
@@ -105,16 +126,21 @@ export function mountUi(hooks: UiHooks) {
     const k = game.kingdom;
     const cap = capacity(k);
     const pl = playerLevel(k), cur = 40 * (pl - 1) ** 2, nxt = 40 * pl ** 2;
+    const xp = Math.round(((k.xp - cur) / (nxt - cur)) * 100);
+    const up = k.upgrade;
+    const builder = up
+      ? `<button class="builder busy" data-goto-build="${up.key}" title="Ver la obra">${ICONS.hammer}<span><b>${BUILDINGS[up.key].name}</b><span class="num" data-left="${up.endsAt}"></span></span></button>`
+      : `<span class="builder" title="El constructor está libre">${ICONS.hammer}<span><b>Libre</b><span>constructor</span></span></span>`;
     $("hud").innerHTML = `
-      <div class="brand">Empire</div>
-      <div class="res">${RESOURCES.map((r) => `<div class="chip" title="${RESOURCE_NAMES[r]}"><i class="dot d-${r}"></i><span><b class="num" data-res="${r}">${fmt(k.res[r])}</b><span class="cap num">/${fmt(cap)}</span><br><span class="rate num">+${(productionRate(k, r) * 60).toFixed(0)}/min</span></span></div>`).join("")}</div>
-      <div class="status"><span>Castillo <b class="num">${k.buildings.castle}</b></span>
-        <span>Nivel <b class="num">${pl}</b> <span class="xpbar"><i style="width:${(((k.xp - cur) / (nxt - cur)) * 100).toFixed(0)}%"></i></span></span>
-        <span>Poder <b class="num">${fmt(power(k))}</b></span><span id="shield"></span></div>`;
+      <div class="hud-top">
+        <div class="lvl-badge" style="--p:${xp}%" title="Nivel ${pl} · ${xp} % hacia el siguiente"><span class="num">${pl}</span></div>
+        <div class="res">${RESOURCES.map((r) => `<div class="chip" title="${RESOURCE_NAMES[r]}: ${fmt(k.res[r])} de ${fmt(cap)}">${ICONS[r]}<span class="chip-txt"><b class="num" data-res="${r}">${fmt(k.res[r])}</b><span class="rate num">+${(productionRate(k, r) * 60).toFixed(0)}/min</span></span><i class="fill" data-fill="${r}"></i></div>`).join("")}</div>
+      </div>
+      <div class="status"><span class="stat" title="Poder militar">${ICONS.power}<b class="num">${fmt(power(k))}</b></span>${builder}<span id="shield"></span></div>`;
   }
 
   function renderTabs() {
-    $("tabs").innerHTML = TABS.map(([t, n]) => `<button data-tab="${t}" aria-selected="${game.tab === t}">${n}${t === "informes" && game.unread ? `<span class="badge">${game.unread}</span>` : ""}</button>`).join("");
+    $("tabs").innerHTML = TABS.map(([t, n]) => `<button data-tab="${t}" aria-selected="${game.tab === t}">${ICONS[TAB_ICONS[t]]}<span>${n}</span>${t === "informes" && game.unread ? `<span class="badge">${game.unread}</span>` : ""}</button>`).join("");
   }
 
   function renderPanel() {
@@ -123,38 +149,53 @@ export function mountUi(hooks: UiHooks) {
     const sheetOpen = game.tab === "ejercito" || game.tab === "informes";
     p.hidden = sheetOpen || !sel;
     if (p.hidden) return void (p.innerHTML = "");
-    p.innerHTML = `<button class="close" data-deselect aria-label="Cerrar">×</button>` + (sel!.view === "kingdom" ? buildingPanel(sel!.key) : tilePanel(sel!.x, sel!.y));
+    p.innerHTML = `<div class="grabber" aria-hidden="true"></div><button class="close" data-deselect aria-label="Cerrar">${ICONS.close}</button>` + (sel!.view === "kingdom" ? buildingPanel(sel!.key) : tilePanel(sel!.x, sel!.y));
+  }
+
+  /** Qué cambia al subir un edificio un nivel: [texto, valor actual, valor siguiente]. */
+  function nextLevel(key: BuildingKey, level: number): [string, string, string][] {
+    const k = game.kingdom, d = BUILDINGS[key];
+    const at = (l: number) => ({ ...k, buildings: { ...k.buildings, [key]: l } });
+    const rows: [string, string, string][] = [];
+    if (d.produces) rows.push([`${RESOURCE_NAMES[d.produces]} por minuto`, ((d.rate ?? 0) * level * 60).toFixed(0), ((d.rate ?? 0) * (level + 1) * 60).toFixed(0)]);
+    if (key === "storage" || key === "castle") rows.push(["Capacidad del almacén", fmt(capacity(k)), fmt(capacity(at(level + 1)))]);
+    if (key === "storage") rows.push(["Protegido de cada recurso", fmt(protectedAmount(k)), fmt(protectedAmount(at(level + 1)))]);
+    if (key === "wall") rows.push(["Resistencia de la muralla", String(level * 250), String((level + 1) * 250)]);
+    if (key === "tower") rows.push(["Daño por ronda", String(level * 25), String((level + 1) * 25)]);
+    if (key === "castle") rows.push(["Nivel máximo de los edificios", String(level), String(level + 1)]);
+    return rows;
   }
 
   function buildingPanel(key: BuildingKey) {
     const k = game.kingdom, d = BUILDINGS[key], level = k.buildings[key], up = k.upgrade;
-    let info = "";
-    if (d.produces) info = `<p class="small">Produce <b class="num">${((d.rate ?? 0) * level * 60).toFixed(0)}</b> de ${RESOURCE_NAMES[d.produces].toLowerCase()} por minuto.</p>`;
-    if (key === "storage") info = `<p class="small">Capacidad <b class="num">${fmt(capacity(k))}</b>. Protege <b class="num">${protectedAmount(k)}</b> de cada recurso.</p>`;
-    if (key === "wall" && level) info = `<p class="small">Resistencia <b class="num">${level * 250}</b> PV.</p>`;
-    if (key === "tower" && level) info = `<p class="small">Daño <b class="num">${level * 25}</b> por ronda.</p>`;
+    const head = `<div class="ph"><span class="ph-ico">${ICONS[BUILDING_ICONS[key]]}</span><div><h3>${d.name}</h3><span class="lvl">${level ? "Nivel " + level : "Sin construir"}</span></div></div><p class="desc">${d.description}</p>`;
     let action: string;
-    if (up?.key === key) action = `${bar(up.endsAt - up.duration, up.endsAt)}<p class="small muted">Construyendo… <span class="num" data-left="${up.endsAt}"></span></p>`;
+    if (up?.key === key) action = `<div class="working">${ICONS.hammer}<span>Construyendo nivel ${level + 1}</span><span class="num" data-left="${up.endsAt}"></span></div>${bar(up.endsAt - up.duration, up.endsAt)}`;
     else {
       const blocker = upgradeBlocker(k, key);
       const hard = blocker && blocker !== "Faltan recursos" && blocker !== "El constructor está ocupado";
+      const gains = nextLevel(key, level);
+      const table = gains.length && !hard
+        ? `<div class="gains">${gains.map(([label, a, b]) => `<div><span>${label}</span><span class="num">${level ? a : "–"} ${ICONS.up}<b>${b}</b></span></div>`).join("")}</div>`
+        : "";
+      const c = buildingCost(key, level);
       action = hard
-        ? `<p class="small muted">${blocker}.</p>`
-        : `${cost(buildingCost(key, level))}<div class="btns"><button class="btn primary" data-upgrade="${key}" ${need(buildingCost(key, level))} ${up ? "disabled data-busy" : ""}>${level ? "Mejorar" : "Construir"} · ${mmss(buildingTime(key, level))}</button></div>${up ? `<p class="small muted">El constructor está ocupado con ${BUILDINGS[up.key].name}.</p>` : ""}`;
+        ? `<p class="blocked small">${ICONS.lock}<span>${blocker}.</span></p>`
+        : `${table}${cost(c)}<div class="btns"><button class="btn primary wide" data-upgrade="${key}" ${need(c)} ${up ? "disabled data-busy" : ""}>${ICONS.up}${level ? `Mejorar a nivel ${level + 1}` : "Construir"}<span class="btn-time">${ICONS.clock}${mmss(buildingTime(key, level))}</span></button></div>${up ? `<p class="small muted">El constructor está ocupado con ${BUILDINGS[up.key].name}.</p>` : missing(c)}`;
     }
-    return `<div class="row"><h3>${d.name}</h3><span class="lvl">${level ? "nivel " + level : "sin construir"}</span></div><p class="desc">${d.description}</p>${info}${action}`;
+    return head + action;
   }
 
   function tilePanel(x: number, y: number) {
     const w = game.world, t = tileAt(w, x, y)!, d = distance(w, x, y), k = game.kingdom;
     if (!t.seen) {
-      return `<h3>Territorio sin explorar</h3><p class="desc">A ${d} casillas de tu reino.</p>${canExplore(w, x, y)
-        ? `${cost(exploreCost(w, x, y))}<div class="btns"><button class="btn primary" data-explore ${need(exploreCost(w, x, y))}>Enviar exploradores</button></div>`
-        : `<p class="small muted">Explora primero una casilla vecina.</p>`}`;
+      return `<div class="ph"><span class="ph-ico">${ICONS.eye}</span><div><h3>Territorio sin explorar</h3><span class="lvl">a ${d} casillas</span></div></div>${canExplore(w, x, y)
+        ? `<p class="desc">Envía exploradores para descubrir qué hay bajo las nubes.</p>${cost(exploreCost(w, x, y))}<div class="btns"><button class="btn primary wide" data-explore ${need(exploreCost(w, x, y))}>${ICONS.eye}Enviar exploradores</button></div>${missing(exploreCost(w, x, y))}`
+        : `<p class="blocked small">${ICONS.lock}<span>Explora primero una casilla vecina.</span></p>`}`;
     }
-    const head = `<div class="row"><h3>${t.kind === "kingdom" ? esc(t.name!) : TILE_NAMES[t.kind]}</h3><span class="lvl num">${x},${y}</span></div>`;
+    const head = `<div class="ph"><span class="ph-ico">${ICONS[TILE_ICONS[t.kind] ?? "map"]}</span><div><h3>${t.kind === "kingdom" ? esc(t.name!) : TILE_NAMES[t.kind]}</h3><span class="lvl">${t.kind === "lair" || t.kind === "kingdom" ? "Nivel " + t.level + " · " : ""}a ${d} casillas</span></div></div>`;
     const busy = game.player.expeditions.length >= maxExpeditions(k.buildings.castle);
-    const gatherBtn = (label: string) => `<div class="btns"><button class="btn primary" data-gather ${busy ? "disabled data-busy" : ""}>${label}</button></div>${busy ? `<p class="small muted">Todos tus recolectores están fuera.</p>` : ""}`;
+    const gatherBtn = (label: string) => `<div class="btns"><button class="btn primary wide" data-gather ${busy ? "disabled data-busy" : ""}>${ICONS.cart}${label}</button></div>${busy ? `<p class="small muted">Todos tus recolectores están fuera.</p>` : ""}`;
     switch (t.kind) {
       case "home":
         return head + `<p class="desc">Tu capital. Sus defensas se mejoran en la pestaña Reino.</p>`;
@@ -163,10 +204,10 @@ export function mountUi(hooks: UiHooks) {
       case "ruins":
         return head + `<p class="desc">Restos de un imperio antiguo. Excavar da ${lootText({ gold: 60 * t.level, wood: 40 * t.level, stone: 40 * t.level })}, una sola vez.</p>` + gatherBtn("Excavar");
       case "lair":
-        return head + `<p class="desc">Nivel ${t.level}. Defensores: ${lairArmy(t.level).map((g) => `${g.count} ${g.name.toLowerCase()}`).join(", ")}.</p><p class="small muted">Botín: ${lootText(lairLoot(t.level))}.</p><div class="btns"><button class="btn danger" data-attack>Atacar</button></div>`;
+        return head + `<p class="desc">Defensores: ${lairArmy(t.level).map((g) => `${g.count} ${g.name.toLowerCase()}`).join(", ")}.</p><p class="small muted">Botín: ${lootText(lairLoot(t.level))}.</p><div class="btns"><button class="btn danger wide" data-attack>${ICONS.swords}Atacar</button></div>`;
       case "kingdom": {
         const shielded = (t.shieldUntil ?? 0) > now();
-        return head + `<p class="desc">Reino rival con castillo de nivel ${t.level}. Tesoro estimado: ${fmt(t.treasure!)} de cada recurso.</p><p class="small muted">Guarnición: ${aiKingdomArmy(t.level).map((g) => `${g.count} ${g.name.toLowerCase()}`).join(", ")}${t.level > 1 ? ", muralla y torres" : ""}.</p>${shielded ? `<span class="pill shield">Escudo <span class="num" data-left="${t.shieldUntil}"></span></span>` : `<div class="btns"><button class="btn danger" data-attack>Atacar</button></div>`}`;
+        return head + `<p class="desc">Reino rival con castillo de nivel ${t.level}. Tesoro estimado: ${fmt(t.treasure!)} de cada recurso.</p><p class="small muted">Guarnición: ${aiKingdomArmy(t.level).map((g) => `${g.count} ${g.name.toLowerCase()}`).join(", ")}${t.level > 1 ? ", muralla y torres" : ""}.</p>${shielded ? `<span class="pill shield">Escudo <span class="num" data-left="${t.shieldUntil}"></span></span>` : `<div class="btns"><button class="btn danger wide" data-attack>${ICONS.swords}Atacar</button></div>`}`;
       }
       default: {
         const r = TILE_RESOURCE[t.kind]!;
@@ -186,12 +227,15 @@ export function mountUi(hooks: UiHooks) {
     const k = game.kingdom;
     const rows = UNIT_KEYS.map((u) => {
       const d = UNITS[u], ok = k.buildings[d.building] >= d.buildingLevel;
-      return `<tr><td><b>${d.name}</b><br><span class="small muted">${d.tip}</span></td><td class="num">${d.atk}</td><td class="num">${d.hp}</td><td class="num"><b>${k.army[u]}</b></td>
-        <td>${ok ? `${cost(d.cost)}<div class="btns"><button class="btn" data-train="${u}" data-n="1" ${need(d.cost)}>+1</button><button class="btn" data-train="${u}" data-n="5" ${need(scaleBag(d.cost, 5))}>+5</button></div>` : `<span class="small muted">Requiere ${BUILDINGS[d.building].name} nv ${d.buildingLevel}</span>`}</td></tr>`;
+      return `<div class="unit${ok ? "" : " locked"}">
+        <div class="unit-head"><span class="ph-ico">${ok ? ICONS.swords : ICONS.lock}</span><div><h3>${d.name}</h3><span class="small muted">${d.tip}</span></div><span class="have" title="Tienes"><b class="num">${k.army[u]}</b></span></div>
+        <div class="unit-stats"><span title="Ataque">${ICONS.swords}<b class="num">${d.atk}</b></span><span title="Vida">${ICONS.heart}<b class="num">${d.hp}</b></span></div>
+        ${ok ? `${cost(d.cost)}<div class="btns"><button class="btn" data-train="${u}" data-n="1" ${need(d.cost)}>Entrenar 1</button><button class="btn" data-train="${u}" data-n="5" ${need(scaleBag(d.cost, 5))}>Entrenar 5</button></div>` : `<p class="blocked small">${ICONS.lock}<span>Requiere ${BUILDINGS[d.building].name} nivel ${d.buildingLevel}</span></p>`}
+      </div>`;
     }).join("");
     const q = k.queue.length
       ? `<p class="small">Entrenando ${UNITS[k.queue[0]].name.toLowerCase()} <span class="muted num" data-left="${k.queueEndsAt}"></span>${k.queue.length > 1 ? ` · ${k.queue.length - 1} en cola` : ""}</p>${bar(k.queueEndsAt - trainTime(k, k.queue[0]), k.queueEndsAt)}`
-      : `<p class="small muted">No hay nada entrenándose.</p>`;
+      : "";
     let dragon: string;
     if (!k.buildings.nest) dragon = `<p class="desc">Construye el Nido de dragón (Castillo 2) para conseguir un huevo.</p>`;
     else if (!k.dragon) dragon = `<p class="desc">Tu nido está listo. Un huevo tarda ${HATCH_TIME} segundos en eclosionar.</p>${cost(HATCH_COST)}<div class="btns"><button class="btn primary" data-hatch ${need(HATCH_COST)}>Incubar huevo</button></div>`;
@@ -206,8 +250,9 @@ export function mountUi(hooks: UiHooks) {
         <p class="small muted">Etapas: Cría (1), Joven (4), Adulto (7), Anciano (11). El nivel del Nido limita su crecimiento.</p>`;
     }
     return `<h2>Ejército y criaturas</h2><p class="lead">Las tropas que tienes en casa defienden el reino automáticamente cuando te atacan.</p>
-      <div class="cols"><div class="card"><div class="tablewrap"><table class="units"><thead><tr><th>Unidad</th><th>Atq</th><th>Vida</th><th>Tienes</th><th>Entrenar</th></tr></thead><tbody>${rows}</tbody></table></div>${q}</div>
-      <div class="card"><h3>Dragón</h3>${dragon}</div></div>`;
+      ${q ? `<div class="card queue">${q}</div>` : ""}
+      <div class="units-grid">${rows}</div>
+      <div class="card dragon-card"><div class="ph"><span class="ph-ico">${ICONS.dragon}</span><div><h3>Dragón</h3></div></div>${dragon}</div>`;
   }
 
   function reportsSheet() {
@@ -243,6 +288,13 @@ export function mountUi(hooks: UiHooks) {
     }));
     const on = (sel: string, fn: (el: HTMLElement) => void) => document.querySelectorAll<HTMLElement>(sel).forEach((el) => (el.onclick = () => fn(el)));
     on("[data-deselect]", () => game.select(null));
+    on("[data-goto-build]", (el) => {
+      if (game.tab !== "reino") {
+        game.setTab("reino");
+        hooks.showScene("reino");
+      }
+      game.select({ view: "kingdom", key: el.dataset.gotoBuild as BuildingKey });
+    });
     on("[data-upgrade]", (el) => game.upgrade(el.dataset.upgrade as BuildingKey));
     on("[data-train]", (el) => game.train(el.dataset.train as UnitKey, Number(el.dataset.n)));
     on("[data-hatch]", () => game.hatch());
@@ -276,6 +328,17 @@ export function mountUi(hooks: UiHooks) {
       if (game.busy) return void (b.disabled = true);
       const bag = JSON.parse(b.dataset.need!) as Bag;
       b.disabled = !(Object.entries(bag) as [Resource, number][]).every(([r, v]) => k.res[r] >= v);
+    });
+    const cap = capacity(k);
+    document.querySelectorAll<HTMLElement>("[data-fill]").forEach((el) => {
+      const f = Math.min(1, k.res[el.dataset.fill as Resource] / cap);
+      el.style.width = f * 100 + "%";
+      el.classList.toggle("full", f >= 0.9);
+    });
+    document.querySelectorAll<HTMLElement>("[data-missing]").forEach((el) => {
+      const bag = JSON.parse(el.dataset.missing!) as Bag;
+      const short = (Object.entries(bag) as [Resource, number][]).filter(([r, v]) => k.res[r] < v);
+      el.innerHTML = short.length ? `Te faltan ${short.map(([r, v]) => `<b class="num">${fmt(Math.ceil(v - k.res[r]))}</b> de ${RESOURCE_NAMES[r].toLowerCase()}`).join(", ")}.` : "";
     });
     document.querySelectorAll<HTMLElement>(".cost span[data-r]").forEach((s) => s.classList.toggle("short", k.res[s.dataset.r as Resource] < Number(s.dataset.v)));
     const shield = document.getElementById("shield");

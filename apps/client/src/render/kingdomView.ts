@@ -1,6 +1,6 @@
 import { MeshBuilder, Scene, TransformNode, Vector3, type AbstractMesh, type Engine } from "@babylonjs/core";
-import { AdvancedDynamicTexture, Control, Rectangle, TextBlock } from "@babylonjs/gui";
-import { BUILDINGS, dragonLevel, dragonStage, isHatched, type BuildingKey } from "@empire/core";
+import { AdvancedDynamicTexture, Control, Ellipse, Rectangle, TextBlock } from "@babylonjs/gui";
+import { BUILDINGS, BUILDING_KEYS, dragonLevel, dragonStage, isHatched, upgradeBlocker, type BuildingKey } from "@empire/core";
 import { game, now } from "../game";
 import { Materials, PALETTE, clampTarget, findMeta, onTap, orbitCamera, setupLighting } from "./common";
 import { Kit } from "./kit";
@@ -24,6 +24,7 @@ export class KingdomView implements View {
   private mats: Materials;
   private kit: Kit;
   private shadows;
+  private lastCheck = 0;
   private content: TransformNode;
   private gui: AdvancedDynamicTexture;
   private ring: AbstractMesh;
@@ -98,7 +99,7 @@ export class KingdomView implements View {
     if (this.scene.isDisposed) return;
     const k = game.kingdom;
     const hatched = isHatched(k.dragon);
-    const sig = JSON.stringify([k.buildings, k.upgrade?.key, hatched, k.dragon ? dragonStage(dragonLevel(k.dragon)) : -1, this.models.version]);
+    const sig = JSON.stringify([k.buildings, k.upgrade?.key, hatched, k.dragon ? dragonStage(dragonLevel(k.dragon)) : -1, this.models.version, this.actionable()]);
     if (sig !== this.signature) {
       this.signature = sig;
       this.rebuild();
@@ -120,7 +121,8 @@ export class KingdomView implements View {
       const locked = k.buildings.castle < BUILDINGS[key].unlock;
       const node = this.models.building(key, level) ?? this.kit.building(key, level, locked);
       this.add(node, at(bx + 1, by + 1), { view: "kingdom", key });
-      if (level > 0) this.badge(key, String(level), at(bx + 1, by + 1), 2.6);
+      if (this.actionable().includes(key)) this.actionBadge(key, level, at(bx + 1, by + 1), level ? 2.6 : 1);
+      else if (locked) this.lockBadge(key, `Castillo ${BUILDINGS[key].unlock}`, at(bx + 1, by + 1));
       if (key === "nest" && k.dragon) {
         const d = this.kit.dragon(isHatched(k.dragon) ? dragonStage(dragonLevel(k.dragon)) : 0, !isHatched(k.dragon));
         d.parent = this.content;
@@ -145,8 +147,8 @@ export class KingdomView implements View {
       const p = at(x + 0.5, y + 0.5);
       this.add(tower > 0 ? this.kit.tower(tower, wall) : this.ghost(0.7, 0.7, 0), p, { view: "kingdom", key: "tower" });
     }
-    if (wall > 0) this.badge("wall", `Muralla ${wall}`, at(SIZE / 2, SIZE - 0.5), 1.5);
-    if (tower > 0) this.badge("tower", `Torres ${tower}`, at(0.5, SIZE - 0.5), 2.2);
+    if (this.actionable().includes("wall")) this.actionBadge("wall", wall, at(SIZE / 2, SIZE - 0.5), 1.5);
+    if (this.actionable().includes("tower")) this.actionBadge("tower", tower, at(0.5, SIZE - 0.5), 2.2);
 
     // Obra en curso: andamio y barra de progreso
     const up = k.upgrade;
@@ -206,22 +208,27 @@ export class KingdomView implements View {
     return a;
   }
 
-  /** Etiqueta con el nivel encima de un edificio. */
-  private badge(id: string, text: string, p: Vector3, h: number) {
-    const a = this.anchor(id, p, h);
-    const r = new Rectangle(`etiqueta-${id}`);
+  /** Edificios que se pueden mejorar o construir ahora mismo. */
+  private actionable() {
+    const k = game.kingdom;
+    return BUILDING_KEYS.filter((key) => !upgradeBlocker(k, key));
+  }
+
+  /** Solar bloqueado: dice qué nivel de castillo hace falta. */
+  private lockBadge(id: string, text: string, p: Vector3) {
+    const a = this.anchor(id, p, 0.3);
+    const r = new Rectangle(`bloqueado-${id}`);
     r.adaptWidthToChildren = true;
     r.height = "22px";
     r.cornerRadius = 11;
-    r.thickness = 1.5;
-    r.color = "#d6a64c";
-    r.background = "rgba(17,25,21,0.85)";
+    r.thickness = 1;
+    r.color = "#6b7a70";
+    r.background = "rgba(17,25,21,0.75)";
     r.isPointerBlocker = false;
     const t = new TextBlock();
     t.text = text;
-    t.color = "#ebe5d4";
+    t.color = "#c9d1c6";
     t.fontSize = 12;
-    t.fontFamily = '"IBM Plex Mono", monospace';
     t.resizeToFit = true;
     t.paddingLeft = "8px";
     t.paddingRight = "8px";
@@ -229,6 +236,27 @@ export class KingdomView implements View {
     this.gui.addControl(r);
     this.controls.push(r);
     r.linkWithMesh(a);
+  }
+
+  /** Aviso sobre un edificio que se puede mejorar (flecha) o construir (más). */
+  private actionBadge(id: string, level: number, p: Vector3, h: number) {
+    const a = this.anchor(id, p, h);
+    const e = new Ellipse(`accion-${id}`);
+    e.width = "28px";
+    e.height = "28px";
+    e.thickness = 2;
+    e.color = "#eaf5d8";
+    e.background = level ? "#4f9a3a" : "#c9933a";
+    e.isPointerBlocker = false;
+    const t = new TextBlock();
+    t.text = level ? "▲" : "+";
+    t.color = "#ffffff";
+    t.fontSize = level ? 13 : 20;
+    t.fontWeight = "bold";
+    e.addControl(t);
+    this.gui.addControl(e);
+    this.controls.push(e);
+    e.linkWithMesh(a);
   }
 
   private progressBar(p: Vector3, h: number) {
@@ -262,6 +290,12 @@ export class KingdomView implements View {
   }
 
   update() {
+    // Los recursos suben sin avisar: cada segundo se mira si algún edificio se puede mejorar ya.
+    const t = performance.now();
+    if (t - this.lastCheck > 1000) {
+      this.lastCheck = t;
+      this.refresh();
+    }
     const up = game.kingdom.upgrade;
     if (up && this.progress) {
       const f = Math.min(1, Math.max(0, 1 - (up.endsAt - now()) / up.duration));
