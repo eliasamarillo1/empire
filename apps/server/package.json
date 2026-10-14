@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@empire/core": "0.1.0",
-    "fastify": "5.4.0"
+    "fastify": "5.12.7"
   },
   "devDependencies": {
     "@types/node": "22.15.30",

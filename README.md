@@ -18,9 +18,10 @@ docs/           Documento de diseño y stack técnico.
 Solo hace falta hacerlo una vez:
 
 1. Instala **Node.js 22 o más nuevo** desde https://nodejs.org (la versión LTS) y **Git** desde https://git-scm.com.
-2. Abre una terminal (en Windows, «Terminal» o «PowerShell»; en Mac, «Terminal») y descarga el juego:
+2. Abre una terminal (en Windows, «Terminal» o «PowerShell»; en Mac o Linux, «Terminal») y descarga el juego en tu carpeta personal. Así queda en su propia carpeta, `empire`, y no dentro de otro proyecto:
 
    ```bash
+   cd ~
    git clone https://github.com/eliasamarillo1/empire.git
    cd empire
    npm install
@@ -36,6 +37,7 @@ Arranca el servidor y el juego a la vez. Cuando veas «Empire está listo», abr
 
 - **En el móvil:** con el móvil en la misma wifi que el ordenador, abre la dirección que aparece en «En tu móvil». Si no carga, permite a Node en el cortafuegos del ordenador cuando te lo pregunte.
 - **Para traer los últimos cambios:** `git pull` y después `npm install`.
+- **Si `npm install` avisa de que bloqueó el script de esbuild** (npm 12 o más nuevo) y el juego no arranca, ejecuta `npm rebuild esbuild`. El proyecto ya permite ese script en `package.json`, así que solo debería pasar en copias descargadas antes de este cambio.
 - **Las partidas con cuenta** se guardan en `apps/server/data/empire.json`. Si borras ese archivo, empiezas de cero.
 
 ## Comandos para desarrollar
