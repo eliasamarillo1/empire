@@ -1,0 +1,82 @@
+{
+  "edificios": {
+    "castle": {
+      "archivo": "kaykit/building_castle_blue.gltf",
+      "escala": 1.0
+    },
+    "house": [
+      {
+        "archivo": "kaykit/building_home_A_blue.gltf",
+        "escala": 1.7
+      },
+      {
+        "archivo": "kaykit/building_home_B_blue.gltf",
+        "desde": 4,
+        "escala": 1.5
+      }
+    ],
+    "farm": [
+      {
+        "archivo": "kaykit/building_grain.gltf",
+        "escala": 0.95
+      },
+      {
+        "archivo": "kaykit/building_windmill_blue.gltf",
+        "desde": 4,
+        "escala": 0.9
+      }
+    ],
+    "sawmill": {
+      "archivo": "kaykit/building_lumbermill_blue.gltf",
+      "escala": 1.25
+    },
+    "quarry": {
+      "archivo": "kaykit/building_mine_blue.gltf",
+      "escala": 0.9
+    },
+    "storage": {
+      "archivo": "kaykit/building_market_blue.gltf",
+      "escala": 1.0
+    },
+    "barracks": {
+      "archivo": "kaykit/building_barracks_blue.gltf",
+      "escala": 0.85
+    },
+    "stable": {
+      "archivo": "kaykit/building_archeryrange_blue.gltf",
+      "escala": 1.0
+    }
+  },
+  "casillas": {
+    "forest": [
+      {
+        "archivo": "kaykit/trees_A_large.gltf",
+        "escala": 0.55
+      },
+      {
+        "archivo": "kaykit/trees_B_large.gltf",
+        "escala": 0.55
+      },
+      {
+        "archivo": "kaykit/trees_A_medium.gltf",
+        "escala": 0.55
+      },
+      {
+        "archivo": "kaykit/trees_B_medium.gltf",
+        "escala": 0.55
+      }
+    ],
+    "ruins": {
+      "archivo": "kaykit/building_destroyed.gltf",
+      "escala": 0.5
+    },
+    "kingdom": {
+      "archivo": "kaykit/building_castle_red.gltf",
+      "escala": 0.28
+    },
+    "home": {
+      "archivo": "kaykit/building_castle_blue.gltf",
+      "escala": 0.34
+    }
+  }
+}

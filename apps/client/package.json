@@ -10,8 +10,10 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@empire/core": "0.1.0",
-    "phaser": "3.90.0"
+    "@babylonjs/core": "9.27.1",
+    "@babylonjs/gui": "9.27.1",
+    "@babylonjs/loaders": "9.27.1",
+    "@empire/core": "0.1.0"
   },
   "devDependencies": {
     "vite": "6.4.4"

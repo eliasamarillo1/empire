@@ -1,27 +1,27 @@
-import Phaser from "phaser";
 import "./style.css";
 import { game, type Tab } from "./game";
-import { KingdomScene } from "./scenes/KingdomScene";
-import { WorldScene } from "./scenes/WorldScene";
+import { Renderer } from "./render/renderer";
 import { mountUi } from "./ui";
 
-const phaser = new Phaser.Game({
-  type: Phaser.AUTO,
-  parent: "game",
-  backgroundColor: "#111915",
-  scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-  render: { antialias: true },
-  scene: [KingdomScene, WorldScene],
-});
+const renderer = new Renderer(document.getElementById("game")!);
 
-/** Reino y Mapa son escenas de Phaser; Ejército e Informes son paneles encima de la escena actual. */
+/** Reino y Mapa son vistas 3D; Ejército e Informes son paneles encima de la vista actual. */
 function showScene(tab: Tab) {
-  const key = tab === "mapa" ? "world" : tab === "reino" ? "kingdom" : null;
-  if (!key) return;
-  const other = key === "world" ? "kingdom" : "world";
-  if (phaser.scene.isActive(other)) phaser.scene.stop(other);
-  if (!phaser.scene.isActive(key)) phaser.scene.start(key);
+  if (tab === "mapa") renderer.show("world");
+  else if (tab === "reino") renderer.show("kingdom");
 }
+
+// Al entrar con otra cuenta o volver a jugar sin conexión, la partida es otra: se rehace la vista.
+const session = () => (game.mode?.kind === "online" ? game.mode.id : game.mode?.kind ?? "");
+let lastSession = session();
+game.onChange(() => {
+  // La primera vez que hay partida (al arrancar o al entrar) se abre la vista de la pestaña actual.
+  if (game.mode && !renderer.active) renderer.show(game.tab === "mapa" ? "world" : "kingdom");
+  if (session() === lastSession) return;
+  const changed = lastSession !== "";
+  lastSession = session();
+  if (changed) renderer.reload();
+});
 
 mountUi({ showScene });
 void game.boot();
