@@ -116,7 +116,7 @@ export function clampTarget(cam: ArcRotateCamera, minX: number, maxX: number, mi
 }
 
 /** Un toque solo cuenta si el dedo apenas se movió: así girar la cámara no selecciona nada. */
-export function onTap(scene: Scene, handler: (mesh: AbstractMesh | null) => void) {
+export function onTap(scene: Scene, handler: (mesh: AbstractMesh | null, point: Vector3 | null) => void) {
   let sx = 0, sy = 0, moved = false, fingers = 0;
   scene.onPointerObservable.add((info) => {
     const e = info.event as PointerEvent;
@@ -133,7 +133,7 @@ export function onTap(scene: Scene, handler: (mesh: AbstractMesh | null) => void
       fingers = Math.max(0, fingers - 1);
       if (moved || e.button > 0) return;
       const pick = scene.pick(scene.pointerX, scene.pointerY, (m) => m.isPickable && m.isEnabled());
-      handler(pick?.hit ? pick.pickedMesh : null);
+      handler(pick?.hit ? pick.pickedMesh : null, pick?.hit ? pick.pickedPoint : null);
     }
   });
 }

@@ -66,6 +66,13 @@ export class Kit {
     ];
   }
 
+  /** Árbol de copa redonda (roble, haya): da variedad junto a los pinos. */
+  broadleaf(x: number, z: number, s = 1, color: string = PALETTE.leaves) {
+    const top = MeshBuilder.CreateIcoSphere("copa", { radius: 0.34 * s, subdivisions: 1, flat: true }, this.scene);
+    top.scaling.y = 0.85;
+    return [this.cyl(0.09 * s, 0.38 * s, PALETTE.woodDark, x, 0, z, 6), this.paint(top, color, x, 0.6 * s, z)];
+  }
+
   /** Edificio del reino según su tipo y nivel. Nivel 0 = solar vacío. */
   building(key: BuildingKey, level: number, locked: boolean): TransformNode {
     if (level <= 0) return this.lot(locked);
