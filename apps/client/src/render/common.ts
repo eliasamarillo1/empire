@@ -1,5 +1,5 @@
 import {
-  ArcRotateCamera, Color3, Color4, DirectionalLight, HemisphericLight, Mesh, MeshBuilder, PointerEventTypes, Scene,
+  ArcRotateCamera, Color3, Color4, DirectionalLight, HDRCubeTexture, HemisphericLight, Mesh, MeshBuilder, PointerEventTypes, Scene,
   ShadowGenerator, StandardMaterial, TransformNode, Vector3, VertexData, type AbstractMesh, type Engine,
 } from "@babylonjs/core";
 
@@ -57,6 +57,12 @@ export function setupLighting(scene: Scene, sky: string, fogDensity: number, sha
   scene.fogColor = c;
   scene.fogDensity = fogDensity;
   scene.ambientColor = new Color3(0.25, 0.25, 0.25);
+
+  // Luz ambiental del cielo HDRI (Poly Haven): ilumina los modelos glTF, que usan materiales PBR.
+  // Los modelos provisionales usan materiales simples y no la notan.
+  const env = new HDRCubeTexture(new URL("env/cielo.hdr", document.baseURI).href, scene, 128, false, true, false, true);
+  scene.environmentTexture = env;
+  scene.environmentIntensity = 0.7;
 
   const hemi = new HemisphericLight("cielo", new Vector3(0.2, 1, 0.1), scene);
   hemi.intensity = 0.55;

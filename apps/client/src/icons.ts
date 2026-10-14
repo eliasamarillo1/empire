@@ -27,6 +27,8 @@ export const ICONS = {
   dragon: svg(`<path fill="currentColor" d="M3 14c3-1 5-4 6-8 1 3 3 4 5 4l3-4 1 5 3 1-3 2c-1 4-5 6-9 6l1-3c-3 0-5-1-7-3z"/>`),
   eye: svg(`<path fill="none" stroke="currentColor" stroke-width="1.8" d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/>`),
   cart: svg(`<path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3 6h3l2 9h10l2-7H7"/><circle cx="10" cy="19" r="1.6" fill="currentColor"/><circle cx="17" cy="19" r="1.6" fill="currentColor"/>`),
+  sound: svg(`<path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>`),
+  mute: svg(`<path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M16 9l5 6M21 9l-5 6"/>`),
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -7,6 +7,7 @@ import {
 } from "@empire/core";
 import { game, lootText, now, type Battle, type Tab } from "./game";
 import { ICONS, type IconName } from "./icons";
+import { isMuted, mountSounds, play, setMuted } from "./sound";
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -45,6 +46,7 @@ export interface UiHooks {
 export function mountUi(hooks: UiHooks) {
   game.onChange(render);
   game.onToast(toast);
+  mountSounds();
   render();
   setInterval(tickUi, 250);
 
@@ -136,18 +138,22 @@ export function mountUi(hooks: UiHooks) {
         <div class="lvl-badge" style="--p:${xp}%" title="Nivel ${pl} · ${xp} % hacia el siguiente"><span class="num">${pl}</span></div>
         <div class="res">${RESOURCES.map((r) => `<div class="chip" title="${RESOURCE_NAMES[r]}: ${fmt(k.res[r])} de ${fmt(cap)}">${ICONS[r]}<span class="chip-txt"><b class="num" data-res="${r}">${fmt(k.res[r])}</b><span class="rate num">+${(productionRate(k, r) * 60).toFixed(0)}/min</span></span><i class="fill" data-fill="${r}"></i></div>`).join("")}</div>
       </div>
-      <div class="status"><span class="stat" title="Poder militar">${ICONS.power}<b class="num">${fmt(power(k))}</b></span>${builder}<span id="shield"></span></div>`;
+      <div class="status"><span class="stat" title="Poder militar">${ICONS.power}<b class="num">${fmt(power(k))}</b></span>${builder}<span id="shield"></span><button class="stat mute" data-mute aria-pressed="${isMuted()}" aria-label="${isMuted() ? "Activar sonido" : "Silenciar"}" title="${isMuted() ? "Activar sonido" : "Silenciar"}">${isMuted() ? ICONS.mute : ICONS.sound}</button></div>`;
   }
 
   function renderTabs() {
     $("tabs").innerHTML = TABS.map(([t, n]) => `<button data-tab="${t}" aria-selected="${game.tab === t}">${ICONS[TAB_ICONS[t]]}<span>${n}</span>${t === "informes" && game.unread ? `<span class="badge">${game.unread}</span>` : ""}</button>`).join("");
   }
 
+  let lastPanel = "";
   function renderPanel() {
     const p = $("panel");
     const sel = game.selection;
     const sheetOpen = game.tab === "ejercito" || game.tab === "informes";
     p.hidden = sheetOpen || !sel;
+    const id = p.hidden ? "" : JSON.stringify(sel);
+    if (id && id !== lastPanel) play("abrir", 0.35);
+    lastPanel = id;
     if (p.hidden) return void (p.innerHTML = "");
     p.innerHTML = `<div class="grabber" aria-hidden="true"></div><button class="close" data-deselect aria-label="Cerrar">${ICONS.close}</button>` + (sel!.view === "kingdom" ? buildingPanel(sel!.key) : tilePanel(sel!.x, sel!.y));
   }
@@ -288,6 +294,11 @@ export function mountUi(hooks: UiHooks) {
     }));
     const on = (sel: string, fn: (el: HTMLElement) => void) => document.querySelectorAll<HTMLElement>(sel).forEach((el) => (el.onclick = () => fn(el)));
     on("[data-deselect]", () => game.select(null));
+    on("[data-mute]", () => {
+      setMuted(!isMuted());
+      renderHud();
+      bind();
+    });
     on("[data-goto-build]", (el) => {
       if (game.tab !== "reino") {
         game.setTab("reino");
@@ -421,6 +432,7 @@ export function mountUi(hooks: UiHooks) {
   function toast(msg: string, bad: boolean) {
     const el = document.createElement("div");
     el.className = "toast" + (bad ? " bad" : "");
+    play(bad ? "error" : "listo", 0.4);
     el.textContent = msg;
     $("toasts").appendChild(el);
     setTimeout(() => el.remove(), 4200);

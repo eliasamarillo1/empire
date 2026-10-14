@@ -45,8 +45,16 @@ para que no todas se vean iguales.
   Las murallas y las torres se construyen por tramos y por material, y siguen siendo de código por ahora.
 - Casillas: `plain`, `forest`, `mountain`, `gold`, `water`, `lair`, `ruins`, `kingdom`, `home`.
 
-## De dónde sacar modelos
+## Modelos actuales
 
-Sirven los packs de estilo low-poly con licencia para juegos, por ejemplo Synty POLYGON Fantasy Kingdom,
-Kingdom Cozy Pack o Quaternius Fantasy Props MegaKit. Si vienen en `.fbx`, conviértelos a `.glb` con
-Blender (Archivo → Exportar → glTF 2.0).
+Los edificios del reino (salvo murallas, torres, nido y cubil) y los bosques, ruinas y castillos del mapa usan el
+**KayKit Medieval Hexagon Pack** de Kay Lousberg (CC0), en la carpeta `kaykit/`. Para cambiar uno, edita
+`modelos.json`: no hace falta tocar código. El pack completo trae más piezas (iglesia, taberna, herrería, torres,
+murallas de piedra…); si quieres usar otra, copia su `.gltf` y su `.bin` en `kaykit/` (la textura
+`hexagons_medieval.png` ya está).
+
+## De dónde sacar más modelos
+
+Sirven los packs de estilo low-poly con licencia para juegos, por ejemplo otros packs de KayKit, Quaternius o
+Synty POLYGON Fantasy Kingdom. Si vienen en `.fbx`, conviértelos a `.glb` con Blender (Archivo → Exportar →
+glTF 2.0).
