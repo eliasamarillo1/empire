@@ -58,8 +58,9 @@ const ok = <T>(value: T): Outcome<T> => ({ ok: true, value });
 export const FIRST_RAID = 240;
 export const MAX_REPORTS = 30;
 
-export function createPlayer(name: string, seed: number, now: number): Player {
-  return { kingdom: createKingdom(name, now), world: generateWorld(seed), expeditions: [], reports: [], nextRaid: now + FIRST_RAID, seed };
+/** Partida nueva. Sin `world`, el mapa se genera a partir de la semilla. */
+export function createPlayer(name: string, seed: number, now: number, world?: World): Player {
+  return { kingdom: createKingdom(name, now), world: world ? (JSON.parse(JSON.stringify(world)) as World) : generateWorld(seed), expeditions: [], reports: [], nextRaid: now + FIRST_RAID, seed };
 }
 
 /** Siguiente número aleatorio de la partida, guardado en el propio estado. */
@@ -146,7 +147,7 @@ export function gather(p: Player, x: number, y: number, now: number): Outcome<Ex
   let loot: Bag;
   if (t.kind === "ruins") {
     loot = { gold: 60 * t.level, wood: 40 * t.level, stone: 40 * t.level };
-    t.kind = "plain";
+    t.kind = t.base ?? "plain";
     initTile(t, distance(w, x, y));
   } else {
     const r = TILE_RESOURCE[t.kind];
@@ -186,7 +187,8 @@ export function attackTile(p: Player, x: number, y: number, orders: AttackOrders
     if (isLair) {
       loot = lairLoot(tile.level);
       k.xp += 20 * tile.level;
-      tile.kind = (["plain", "forest", "mountain"] as const)[Math.floor(nextRandom(p) * 3)];
+      const pick = (["plain", "forest", "mountain"] as const)[Math.floor(nextRandom(p) * 3)];
+      tile.kind = tile.base ?? pick;
       initTile(tile, distance(w, x, y));
       respawnLair(p);
     } else {
@@ -211,6 +213,7 @@ function respawnLair(p: Player) {
     const x = Math.floor(nextRandom(p) * w.size), y = Math.floor(nextRandom(p) * w.size);
     const t = tileAt(w, x, y)!;
     if (distance(w, x, y) > 2 && !t.seen && (t.kind === "plain" || t.kind === "forest" || t.kind === "mountain")) {
+      t.base ??= t.kind;
       t.kind = "lair";
       initTile(t, distance(w, x, y));
       return;

@@ -1,8 +1,9 @@
 import {
   BUILDINGS, TILE_NAMES, attackTile, createPlayer, explore, feed, gather, hatch, startUpgrade, tickPlayer, train,
-  type AttackOrders, type Bag, type Battle, type BuildingKey, type Player, type PlayerEvent, type Resource, type UnitKey,
+  type AttackOrders, type Bag, type Battle, type BuildingKey, type Player, type PlayerEvent, type Resource, type UnitKey, type World,
 } from "@empire/core";
 import { api, ApiError, type Target } from "./api";
+import { loadMap } from "./maps";
 
 export type Tab = "reino" | "mapa" | "ejercito" | "informes";
 export type Selection = { view: "kingdom"; key: BuildingKey } | { view: "world"; x: number; y: number } | null;
@@ -13,6 +14,8 @@ export type Mode = { kind: "local" } | { kind: "online"; token: string; username
 const SAVE_KEY = "empire-save-v3";
 const SESSION_KEY = "empire-session";
 const SYNC_SECONDS = 15;
+/** Mapa de Tiled de las partidas sin conexión (public/maps/mundo.tmj). Si no está, el mapa se genera. */
+const LOCAL_MAP = "mundo";
 
 let clockOffset = 0;
 /** Hora del juego en segundos. Con cuenta se ajusta a la del servidor. */
@@ -39,6 +42,8 @@ class Game {
   unread = 0;
   targets: Target[] = [];
   busy = false;
+  /** Mapa de Tiled para las partidas nuevas sin conexión. */
+  private localMap?: World;
   private lastSync = 0;
   private listeners = new Set<() => void>();
   private toastListeners = new Set<(msg: string, bad: boolean) => void>();
@@ -71,6 +76,11 @@ class Game {
 
   /** Recupera la sesión guardada, si hay. Si no, se queda esperando a la pantalla de acceso. */
   async boot() {
+    try {
+      this.localMap = (await loadMap(LOCAL_MAP)).world;
+    } catch (e) {
+      console.warn("Sin mapa de Tiled: se usará un mapa generado.", e);
+    }
     const saved = readJson<Mode>(SESSION_KEY);
     if (saved?.kind === "online") {
       try {
@@ -86,7 +96,7 @@ class Game {
 
   playLocal() {
     const save = readJson<Player>(SAVE_KEY);
-    if (save) this.player = save;
+    this.player = save ?? this.newPlayer();
     clockOffset = 0;
     this.mode = { kind: "local" };
     writeJson(SESSION_KEY, this.mode);
@@ -112,10 +122,14 @@ class Game {
 
   /** Borra la partida sin conexión. */
   reset() {
-    this.player = createPlayer("Tu reino", Math.floor(Math.random() * 1e9), now());
+    this.player = this.newPlayer();
     this.selection = null;
     this.save();
     this.changed();
+  }
+
+  private newPlayer() {
+    return createPlayer("Tu reino", Math.floor(Math.random() * 1e9), now(), this.localMap);
   }
 
   save() {

@@ -5,3 +5,4 @@ export * from "./kingdom";
 export * from "./attack";
 export * from "./world";
 export * from "./player";
+export * from "./tiled";

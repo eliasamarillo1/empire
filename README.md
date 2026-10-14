@@ -13,14 +13,39 @@ prototipo/      El primer prototipo en un solo archivo HTML, como referencia.
 docs/           Documento de diseño y stack técnico.
 ```
 
-## Cómo arrancarlo
+## Probarlo en tu ordenador
 
-Necesitas Node 22.
+Solo hace falta hacerlo una vez:
+
+1. Instala **Node.js 22 o más nuevo** desde https://nodejs.org (la versión LTS) y **Git** desde https://git-scm.com.
+2. Abre una terminal (en Windows, «Terminal» o «PowerShell»; en Mac o Linux, «Terminal») y descarga el juego en tu carpeta personal. Así queda en su propia carpeta, `empire`, y no dentro de otro proyecto:
+
+   ```bash
+   cd ~
+   git clone https://github.com/eliasamarillo1/empire.git
+   cd empire
+   npm install
+   ```
+
+Cada vez que quieras jugar, desde la carpeta `empire`:
 
 ```bash
-npm install
-npm run dev:server   # la API en http://localhost:3000 (guarda en apps/server/data/empire.json)
-npm run dev          # el juego en http://localhost:5173, con /api redirigido al servidor
+npm start
+```
+
+Arranca el servidor y el juego a la vez. Cuando veas «Empire está listo», abre http://localhost:5173 en el navegador. Puedes crear una cuenta o jugar sin conexión. Para pararlo, pulsa Ctrl+C en la terminal.
+
+- **En el móvil:** con el móvil en la misma wifi que el ordenador, abre la dirección que aparece en «En tu móvil». Si no carga, permite a Node en el cortafuegos del ordenador cuando te lo pregunte.
+- **Para traer los últimos cambios:** `git pull` y después `npm install`.
+- **Si `npm install` avisa de que bloqueó el script de esbuild** (npm 12 o más nuevo) y el juego no arranca, ejecuta `npm rebuild esbuild`. El proyecto ya permite ese script en `package.json`, así que solo debería pasar en copias descargadas antes de este cambio.
+- **Las partidas con cuenta** se guardan en `apps/server/data/empire.json`. Si borras ese archivo, empiezas de cero.
+
+## Comandos para desarrollar
+
+```bash
+npm start            # servidor y juego a la vez
+npm run dev:server   # solo la API en http://localhost:3000
+npm run dev          # solo el juego en http://localhost:5173, con /api redirigido al servidor
 npm test             # tests de core y del servidor
 npm run build        # versión para publicar en apps/client/dist
 ```
@@ -39,6 +64,10 @@ Al abrir el juego puedes entrar con tu cuenta, crear una o jugar sin conexión.
 Las contraseñas se guardan con scrypt y sal. La sesión es un token aleatorio que caduca a los 30 días.
 
 Para apuntar el juego a un servidor en otra dirección (por ejemplo en la app móvil), compílalo con `VITE_API_URL=https://tu-servidor npm run build`.
+
+## Mapas hechos con Tiled
+
+El mapa del mundo se puede diseñar con [Tiled](https://www.mapeditor.org). El de ejemplo está en `apps/client/public/maps/mundo.tmj` y es el que usan las partidas nuevas, con y sin conexión. La guía [docs/mapas-tiled.md](docs/mapas-tiled.md) explica cómo marcar el terreno, las guaridas y los reinos. La variable `MAP_FILE` del servidor elige otro mapa; si la dejas vacía, vuelve el mapa generado al azar.
 
 ## Estado
 

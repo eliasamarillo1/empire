@@ -3,7 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   BUILDING_KEYS, UNIT_KEYS, addReport, attackTile, createPlayer, explore, feed, gather, hatch, power, resolvePvp, startUpgrade,
   tickPlayer, train, validateOrders,
-  type AttackOrders, type BuildingKey, type Player, type UnitKey,
+  type AttackOrders, type BuildingKey, type Player, type UnitKey, type World,
 } from "@empire/core";
 import { SESSION_SECONDS, checkPassword, credentialsProblem, hashPassword, newToken } from "./auth";
 import { Store } from "./store";
@@ -14,6 +14,8 @@ export interface AppOptions {
   clock?: () => number;
   /** Semilla de cada batalla y de cada mapa nuevo; la decide siempre el servidor. */
   seed?: () => number;
+  /** Mapa de Tiled para las partidas nuevas. Sin él, cada jugador recibe un mapa generado. */
+  world?: World;
 }
 
 /** Rango de poder en el que se puede elegir rival (70 % a 130 % del tuyo). */
@@ -89,7 +91,7 @@ export function buildApp(opts: AppOptions = {}) {
     const { salt, hash } = hashPassword(password!);
     d().accounts[id] = { id, username: username!, passwordHash: hash, salt, createdAt: clock() };
     const kingdomName = (req.body?.kingdom ?? "").trim().slice(0, 30) || `Reino de ${username}`;
-    d().players[id] = createPlayer(kingdomName, seed(), clock());
+    d().players[id] = createPlayer(kingdomName, seed(), clock(), opts.world);
     const token = startSession(id);
     store.changed();
     return reply.code(201).send({ token, player: view(id) });

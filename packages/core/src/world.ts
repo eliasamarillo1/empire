@@ -16,12 +16,18 @@ export interface Tile {
   /** Tesoro de un reino IA (de cada recurso). */
   treasure?: number;
   shieldUntil?: number;
+  /** Terreno que queda debajo cuando desaparece una guarida o unas ruinas (mapas de Tiled). */
+  base?: TileKind;
 }
 
 export interface World {
   size: number;
   seed: number;
   tiles: Tile[];
+  /** Casilla de tu reino. Sin ella, el centro del mapa. */
+  home?: { x: number; y: number };
+  /** Nombre del mapa de Tiled del que sale este mundo (el cliente carga maps/<map>.tmj para dibujarlo). */
+  map?: string;
 }
 
 export const TILE_RESOURCE: Partial<Record<TileKind, Resource>> = { plain: "food", forest: "wood", mountain: "stone", gold: "gold" };
@@ -32,12 +38,19 @@ export const TILE_NAMES: Record<TileKind, string> = {
 const KINGDOM_NAMES = ["Valdoria", "Karn Dur", "Isenmar", "Rocaferro", "Brasaluz", "Hielonorte", "Ostmark", "Lunaria", "Velmora", "Torreval"];
 
 export const center = (w: World) => Math.floor(w.size / 2);
-export const distance = (w: World, x: number, y: number) => Math.max(Math.abs(x - center(w)), Math.abs(y - center(w)));
+/** Casilla de tu reino. */
+export const homeOf = (w: World) => w.home ?? { x: center(w), y: center(w) };
+/** Distancia (en casillas, contando diagonales) desde tu reino. */
+export const distance = (w: World, x: number, y: number) => {
+  const h = homeOf(w);
+  return Math.max(Math.abs(x - h.x), Math.abs(y - h.y));
+};
 export const tileAt = (w: World, x: number, y: number): Tile | undefined =>
   x >= 0 && y >= 0 && x < w.size && y < w.size ? w.tiles[y * w.size + x] : undefined;
 
-export function initTile(t: Tile, d: number) {
-  t.level = clamp(Math.ceil(d / 2), 1, 8);
+/** Prepara una casilla según su tipo y su distancia a tu reino. `level` fija el nivel en vez de calcularlo. */
+export function initTile(t: Tile, d: number, level?: number) {
+  t.level = level ?? clamp(Math.ceil(d / 2), 1, 8);
   const r = TILE_RESOURCE[t.kind];
   if (r) {
     t.max = Math.round((t.kind === "gold" ? 260 : 180) * (1 + d * 0.25));
@@ -47,7 +60,7 @@ export function initTile(t: Tile, d: number) {
     delete t.amount;
   }
   if (t.kind === "kingdom") {
-    t.level = clamp(1 + Math.floor(d / 2), 1, 9);
+    t.level = level ?? clamp(1 + Math.floor(d / 2), 1, 9);
     t.treasure = 300 * t.level;
     t.shieldUntil = 0;
   }
