@@ -117,3 +117,14 @@ table.units th { color: var(--muted); font-weight: 500; font-size: .75rem; text-
 .error { color: var(--bad); font-size: .88rem; min-height: 1.2em; }
 /* El canvas no puede quedarse a tamaño cero: se oculta sin quitarlo del flujo */
 #game.off { display: block !important; visibility: hidden; }
+
+/* Móvil: los cuatro recursos caben en una fila y el mapa queda despejado */
+@media (max-width: 520px) {
+  #hud { gap: 4px 8px; padding-bottom: 4px; }
+  .brand { font-size: 1.3rem; }
+  .res { flex-wrap: nowrap; gap: 4px; flex: 1 1 auto; min-width: 0; }
+  .chip { padding: 2px 6px; gap: 4px; flex: 1 1 0; min-width: 0; font-size: 0.85rem; }
+  .chip .cap { display: none; }
+  .chip .rate { font-size: 0.65rem; }
+  .status { font-size: 0.78rem; }
+}

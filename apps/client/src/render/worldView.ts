@@ -1,6 +1,6 @@
 import {
   Color3, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, VertexBuffer, VertexData,
-  type AbstractMesh, type Engine, type InstancedMesh,
+  type AbstractMesh, type ArcRotateCamera, type Engine, type InstancedMesh,
 } from "@babylonjs/core";
 import { AdvancedDynamicTexture, Rectangle, TextBlock } from "@babylonjs/gui";
 import { canExplore, homeOf, tileAt, type Tile, type TileKind, type World } from "@empire/core";
@@ -63,6 +63,10 @@ export class WorldView implements View {
   private carts: InstancedMesh[] = [];
   private cartSource: AbstractMesh;
   private worldRef?: World;
+  private camera: ArcRotateCamera;
+  /** Nubes que se están deshaciendo tras explorar su casilla. */
+  private fading: { node: TransformNode; start: number }[] = [];
+  private labelsShown = true;
   private unsubscribe: () => void;
 
   constructor(engine: Engine) {
@@ -79,10 +83,11 @@ export class WorldView implements View {
     const w = game.world;
     const h = this.pos(w, homeOf(w).x, homeOf(w).y);
     const cam = orbitCamera(this.scene, h, 14, { min: 5, max: 42 });
+    this.camera = cam;
     clampTarget(cam, -w.size / 2, w.size / 2, -w.size / 2, w.size / 2);
 
     // Agua: un único plano para el mar y los lagos; el terreno que queda por debajo se ve a través.
-    const water = MeshBuilder.CreateGround("agua", { width: 600, height: 600 }, this.scene);
+    const water = MeshBuilder.CreateGround("agua", { width: 3000, height: 3000 }, this.scene);
     water.position.y = WATER;
     const wm = new StandardMaterial("agua", this.scene);
     wm.diffuseColor = C("#4aa3c4");
@@ -159,6 +164,10 @@ export class WorldView implements View {
   /** Valor de una tabla por casilla interpolado suavemente en un punto del mundo. */
   private sample(arr: Float32Array, wx: number, wz: number) {
     const g = this.grid!, size = game.world.size;
+    // Deformación suave de las coordenadas: rompe las líneas rectas de la cuadrícula y de la costa.
+    const ox = wx, oz = wz;
+    wx = ox + (valueNoise(ox * 0.45 + 11.3, oz * 0.45 - 4.1) - 0.5) * 1.1;
+    wz = oz + (valueNoise(ox * 0.45 - 7.7, oz * 0.45 + 2.9) - 0.5) * 1.1;
     // Coordenadas continuas de casilla (centro de la casilla = entero), desplazadas por el margen.
     const fx = wx + size / 2 - 0.5 + MARGIN, fy = size / 2 - 0.5 - wz + MARGIN;
     const x0 = Math.floor(fx), y0 = Math.floor(fy);
@@ -268,16 +277,17 @@ export class WorldView implements View {
       bush: pf("arbusto", [k.rock(0.1, "#5c8f3a", 0, -0.03, 0, 3)]),
       rock: pf("roca", [k.rock(0.13, PALETTE.stone, 0, -0.03, 0, 1)]),
       boulder: pf("pena", [k.rock(0.26, PALETTE.stoneDark, 0, -0.08, 0, 2), k.rock(0.12, PALETTE.stone, 0.2, -0.03, 0.1, 5)]),
-      nugget: pf("pepita", [k.rock(0.07, PALETTE.gold, 0, -0.02, 0, 4)]),
+      nugget: pf("pepita", [glow(k.rock(0.07, PALETTE.gold, 0, -0.02, 0, 4), this.mats.get(PALETTE.gold, { emissive: 0.5 }))]),
+      vein: pf("veta", [
+        k.rock(0.22, PALETTE.stoneDark, 0, -0.06, 0, 6),
+        glow(k.rock(0.06, PALETTE.gold, 0.12, 0.06, -0.1, 2), this.mats.get(PALETTE.gold, { emissive: 0.5 })),
+        glow(k.rock(0.05, PALETTE.gold, -0.08, 0.1, -0.12, 7), this.mats.get(PALETTE.gold, { emissive: 0.5 })),
+      ]),
       flowers: pf("flores", [
         k.cyl(0.05, 0.06, "#f4e27a", 0, 0, 0, 5), k.cyl(0.05, 0.06, "#f2f0e8", 0.08, 0, 0.05, 5), k.cyl(0.05, 0.06, "#e58a7a", -0.06, 0, 0.07, 5),
       ], undefined),
       cloud: pf("nube", [puff(0.42, 0, 0, 0), puff(0.32, 0.38, -0.04, 0.12), puff(0.3, -0.36, -0.05, -0.1), puff(0.26, 0.1, 0.08, -0.32), puff(0.24, -0.1, 0.06, 0.34)], undefined),
-      lair: pf("guarida", [
-        k.rock(0.4, "#4a3f37", 0, -0.12, 0, 2),
-        k.box(0.24, 0.2, 0.04, "#1c1310", 0, 0, -0.33),
-        ...k.tree(0.32, 0.3, 0.6, true),
-      ]),
+      lair: pf("guarida", this.lairParts()),
       ruins: pf("ruinas", [
         k.cyl(0.14, 0.5, "#c9bfa6", -0.22, 0, -0.1, 8),
         k.cyl(0.14, 0.3, "#c9bfa6", 0.18, 0, -0.2, 8),
@@ -317,7 +327,11 @@ export class WorldView implements View {
         const i = y * w.size + x;
         const old = this.cells.get(i);
         if (old?.sig === sig) continue;
-        if (old) this.disposeCell(old);
+        if (old?.sig === "fog") {
+          // La nube no desaparece de golpe: se hincha, sube y se deshace.
+          this.fading.push({ node: old.node, start: performance.now() });
+          old.label?.dispose();
+        } else if (old) this.disposeCell(old);
         this.cells.set(i, this.buildCell(w, t, x, y, sig, fill, shield));
       }
     this.placeRing();
@@ -364,6 +378,7 @@ export class WorldView implements View {
         dome.isPickable = false;
       }
     }
+    if (label) label.isVisible = this.labelsShown;
     return { sig, node, label };
   }
 
@@ -401,11 +416,13 @@ export class WorldView implements View {
         if (rnd() < 0.5) put(p.pineDark, 0.35, 1.0);
         break;
       case "gold":
-        put(p.boulder, 0.7, 0.5);
-        for (let i = 0; i < 1 + fill * 2; i++) put(p.nugget, 1 + rnd() * 0.6, 0.7);
+        // Cuanto más lleno el yacimiento, más vetas y pepitas brillantes.
+        for (let i = 0; i < Math.max(1, fill); i++) put(p.vein, 0.9 + rnd() * 0.5, 0.6);
+        for (let i = 0; i < fill * 2; i++) put(p.nugget, 1 + rnd() * 0.6, 0.8);
         break;
       case "lair":
-        this.place(node, p.lair, 0, 0, { rotation: rnd() * 6 });
+        // La boca de la cueva mira más o menos hacia la cámara inicial.
+        this.place(node, p.lair, 0, 0, { rotation: (rnd() - 0.5) * 1.4 });
         put(p.pineDark, 0.4);
         break;
       case "ruins":
@@ -421,6 +438,32 @@ export class WorldView implements View {
       case "water":
         break;
     }
+  }
+
+  /** Guarida: colina de tierra con la boca de una cueva iluminada en rojo, huesos y un árbol seco. */
+  private lairParts(): AbstractMesh[] {
+    const s = this.scene, k = this.kit;
+    const mouth = MeshBuilder.CreateDisc("boca", { radius: 0.17, arc: 0.5, tessellation: 16, sideOrientation: Mesh.DOUBLESIDE }, s);
+    mouth.position.set(0, 0.0, -0.34);
+    mouth.rotation.x = -0.25;
+    mouth.material = this.mats.get("#140b08");
+    const fire = MeshBuilder.CreateIcoSphere("fuego", { radius: 0.06, subdivisions: 1 }, s);
+    fire.position.set(0, 0.05, -0.31);
+    fire.material = this.mats.get("#ff6a2b", { emissive: 1 });
+    const parts: AbstractMesh[] = [
+      k.rock(0.42, "#6b5b46", 0, -0.14, 0, 3),
+      k.rock(0.22, "#5d4f3d", 0.28, -0.08, 0.12, 8),
+      mouth, fire,
+      k.cyl(0.03, 0.34, PALETTE.woodDark, 0.3, 0, -0.32, 5),
+      k.cyl(0.02, 0.16, PALETTE.woodDark, 0.33, 0.24, -0.32, 4),
+      k.box(0.09, 0.03, 0.03, "#e8e0cc", -0.24, 0, -0.38, 0.6),
+      k.box(0.07, 0.03, 0.03, "#e8e0cc", -0.18, 0, -0.44, -0.4),
+    ];
+    const skull = MeshBuilder.CreateIcoSphere("craneo", { radius: 0.04, subdivisions: 1 }, s);
+    skull.position.set(-0.3, 0.03, -0.42);
+    skull.material = this.mats.get("#e8e0cc");
+    parts.push(skull);
+    return parts;
   }
 
   private badge(node: TransformNode, text: string, color: string, h: number) {
@@ -459,6 +502,24 @@ export class WorldView implements View {
   }
 
   update() {
+    const t = performance.now();
+    this.fading = this.fading.filter((f) => {
+      const k = (t - f.start) / 700;
+      if (k >= 1) {
+        f.node.dispose(false, false);
+        return false;
+      }
+      f.node.scaling.setAll((1 + 0.35 * k) * (1 - k * k));
+      f.node.position.y = k * 0.6;
+      return true;
+    });
+    // Al alejar mucho la cámara, las etiquetas estorban más de lo que ayudan.
+    const show = this.camera.radius < 26;
+    if (show !== this.labelsShown) {
+      this.labelsShown = show;
+      this.cells.forEach((c) => c.label && (c.label.isVisible = show));
+    }
+
     // Recolectores yendo y volviendo desde tu reino
     const w = game.world;
     const h = homeOf(w);
@@ -513,4 +574,10 @@ function valueNoise(x: number, y: number) {
 /** Ruido suave de 0 a 1 con detalle a varias escalas. */
 function fbm(x: number, y: number) {
   return valueNoise(x, y) * 0.55 + valueNoise(x * 2.1 + 5.2, y * 2.1 - 1.7) * 0.3 + valueNoise(x * 4.3 - 3.1, y * 4.3 + 8.4) * 0.15;
+}
+
+/** Cambia el material de una pieza (por ejemplo, para que brille). */
+function glow<T extends AbstractMesh>(m: T, material: AbstractMesh["material"]): T {
+  m.material = material;
+  return m;
 }
